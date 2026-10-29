@@ -27,6 +27,65 @@ changed, err := conditions.Aggregate(parent, children, rules, localConditions...
 
 The evaluator merges results with existing Conditions, then calls the native setter with the complete desired slice. The setter reports whether the stored Conditions changed; `Aggregate` returns that `bool` directly. Setters must accept identical inputs and report `false` for a no-op. Evaluation errors leave the setter uncalled. The package performs no API-server writes.
 
+### A controller boundary
+
+Suppose the controller has already read an application object (`parent`) and its database dependency (`database`). Its local checks pass, while the database reports `Ready=False`, reason `Provisioning`, and message `waiting for endpoint`.
+
+The following is the controller's aggregation code. It defines one parent output and supplies the existing objects to the library:
+
+```go
+func updateReadiness(
+	parent conditions.Conditioned,
+	database conditions.Object,
+	localReady metav1.Condition,
+) (bool, error) {
+	ready := conditions.ConditionType{Type: "Ready", Polarity: conditions.TrueIsGood}
+
+	// Application policy: select child Ready and require all selected children to be ready.
+	policy := readiness{Condition: ready}
+	rules := conditions.Rules{Outputs: []conditions.Aggregation{{
+		Output:    ready,
+		Parent:    conditions.LocalBaseFirst{Base: ready},
+		Children:  policy,
+		Reduction: policy,
+		Messages:  conditions.MultilineMessages{MaxLines: 7},
+	}}}
+
+	// The controller supplies existing objects and its already-computed local Ready assertion.
+	return conditions.Aggregate(parent,
+		map[string]conditions.Object{"database": database},
+		rules,
+		localReady,
+	)
+}
+```
+
+`readiness` is **application code**, not a library type. This partial example omits its implementation and the resource accessors; both are included in the [complete executable example](example_test.go). The policy selects each child's Ready Condition, treats a missing Ready as Unknown, and combines the selected observations with known bad taking precedence over Unknown and good. It chooses the output reasons and diagnostic summary.
+
+The library supplies `LocalBaseFirst`, polarity normalization, deterministic child ordering, output metadata, message formatting, and the final setter call. Here `LocalBaseFirst` preserves a bad local Ready assertion; when the local assertion is good, child readiness participates. The local Ready argument supplies the base for this output on each call.
+
+For the already-computed local result:
+
+```go
+localReady := metav1.Condition{
+    Type: "Ready", Status: metav1.ConditionTrue, Reason: "LocalChecksPassed",
+}
+changed, err := updateReadiness(parent, database, localReady)
+```
+
+The complete example prints:
+
+```text
+changed=true, Ready=False, reason=ChildrenNotReady
+Required children are not ready:
+  database: waiting for endpoint
+same observations: changed=false
+```
+
+The parent now contains the derived Ready Condition. Its other Condition types are retained, and the output's observed generation comes from the parent. The controller handles `err` and persists the parent's status when `changed` is true. Repeating the call with the same observations reports no change. Discovery and persistence are outside the library.
+
+### Pure evaluation
+
 For a pure evaluation, use the same arguments with `Evaluate`:
 
 ```go

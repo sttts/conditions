@@ -4,7 +4,20 @@ This example aggregates **operator status**, using native OpenShift API types. S
 
 The inputs are the operator's already-computed assertions. This package does not inspect Pods, Deployments, or operand/component Conditions. The negative `Degraded` flag describes the operator's inability to fulfill intent; it is not an aggregation of every operand's readiness.
 
-## Rules and upstream semantics
+## Condition setup
+
+### Boundary and ownership
+
+| Role | Object and Conditions |
+| --- | --- |
+| Parent/output | A native `configv1.ClusterOperator`, exposed through the `ClusterOperator` adapter. |
+| Supplied source | A native operator configuration object such as `operatorv1.Console`, whose OperatorStatus is exposed through the `Operator` adapter. |
+| Local arguments | None are needed for the four unions. Each output has a default base that schedules its rule. |
+| Selected assertions | Every matching controller Condition in the supplied operator's status; one source object can contribute several assertions to the same output. |
+
+The four unions do not depend on an Initialized or Synced Condition and do not invalidate one another. The adapter identifies operator-status input explicitly. Operand Conditions do not become inputs merely because they have a matching type suffix.
+
+### Mappings and rule data
 
 [`OpenShiftRules`](openshift.go) expresses the suffix-union behavior of library-go's [`UnionCondition` and `UnionClusterCondition`](https://github.com/openshift/library-go/blob/release-4.19/pkg/operator/status/condition.go). The upstream [`StatusSyncer`](https://github.com/openshift/library-go/blob/release-4.19/pkg/operator/status/status_controller.go) uses these unions to project operator status to ClusterOperator status.
 
@@ -14,6 +27,27 @@ The inputs are the operator's already-computed assertions. This package does not
 | Progressing | Every type ending in `Progressing` | False |
 | Degraded | Every type ending in `Degraded` | False |
 | Upgradeable | Every type ending in `Upgradeable` | True |
+
+The source and output polarities match for each row. For example, ConfigDegraded=True is a normalized bad contribution and produces Degraded=True. No matching Upgradeable assertion produces Unknown, rather than assuming that upgrades are permitted.
+
+The Degraded entry in the complete rule set has this shape. Here `c` imports the root library, `openshift` imports this example module, and `metav1` imports API machinery's metadata package:
+
+```go
+degraded := c.ConditionType{Type: "Degraded", Polarity: c.FalseIsGood}
+rule := c.Aggregation{
+    Output:      degraded,
+    DefaultBase: &metav1.Condition{Type: "Degraded"},
+    Parent:      c.ChildrenOnly{},
+    Children:    openshift.OperatorConditions{Condition: degraded},
+    Reduction:   openshift.OperatorUnion{Condition: degraded},
+    Messages:    openshift.UnionMessages{},
+    Generation:  c.NoObservedGeneration,
+}
+```
+
+`OperatorConditions` and `OperatorUnion` are this example's policy implementations. `ChildrenOnly` supplies the library's no-local-precedence policy. The default base activates the output without a local argument; it is not an assertion of success. The reducer determines NoData/Unknown from the selected inputs. The other three outputs use the same pattern with the condition type and polarity from the table.
+
+### Reduction and diagnostics
 
 Each output is independent. Missing matching inputs produce `Unknown/NoData`, including for Upgradeable. A known opposite status outranks Unknown. No flag implicitly maps to terminal `Failed`, invalidates another flag, or prevents later recovery.
 

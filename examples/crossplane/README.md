@@ -2,7 +2,18 @@
 
 This example uses Crossplane's actual `Condition`, `ConditionedStatus`, and constructors from `crossplane-runtime/v2` v2.0.0. It supplies a representation adapter and an explicit example readiness policy to the shared root `conditions.Aggregate` implementation.
 
-## Native assertions and configured policy
+## Condition setup
+
+### Boundary and native assertions
+
+| Role | Conditions supplied to the evaluator |
+| --- | --- |
+| Parent/output | An existing resource's native ConditionedStatus, exposed through Adapter. Ready is the only configured aggregate output. |
+| Children | Native child Conditions exposed through Adapter. The selector reads only Ready; missing Ready contributes Unknown. |
+| Local Ready | Optional caller assertion of the parent's own readiness. A supplied assertion replaces the rule's default base. |
+| Local Synced | Optional caller assertion of the parent's reconciliation result, converted with ToCondition and passed as a local argument. It is stored independently. |
+
+Resource metadata and prior Conditions stay on the existing objects. The caller supplies the relevant child set; the library does not locate composed resources.
 
 Crossplane's [Condition definitions](https://github.com/crossplane/crossplane-runtime/blob/v2.0.0/apis/common/condition.go) distinguish readiness from reconciliation:
 
@@ -13,6 +24,24 @@ Crossplane's [Condition definitions](https://github.com/crossplane/crossplane-ru
 
 `ReconcileError` may mean an update failed or an observation failed. It does not universally invalidate a supplied `Ready=True` assertion. `Healthy` is reserved and not implemented in this pinned API version; it is not used as an input here.
 
+### Rule data and precedence
+
+The complete Ready setup is equivalent to the following data. Here `c` imports the root library, `crossplane` imports this example module, and `metav1` imports API machinery's metadata package:
+
+```go
+ready := c.ConditionType{Type: "Ready", Polarity: c.TrueIsGood}
+rules := c.Rules{Outputs: []c.Aggregation{{
+    Output:      ready,
+    DefaultBase: &metav1.Condition{Type: "Ready", Status: metav1.ConditionTrue, Reason: "Available"},
+    Parent:      c.LocalBaseFirst{Base: ready},
+    Children:    crossplane.ReadyChildren{},
+    Reduction:   crossplane.Readiness{},
+    Messages:    c.BoundedMessages{MaxLines: 7},
+}}}
+```
+
+Ready uses `TrueIsGood` on both input and output. `ReadyChildren` and `Readiness` are this example's selector and reducer; `LocalBaseFirst` and the formatter come from the library. The good default base is an explicit policy assumption for omitted local Ready, not a readiness observation inferred by the library. It schedules the output even when the call supplies only local Synced. Missing Ready on a supplied child still contributes Unknown. An empty child set leaves the otherwise-good base sufficient.
+
 [`CrossplaneRules`](crossplane.go) defines this example's policy:
 
 - Aggregate child Ready assertions into parent Ready. Known bad outranks Unknown; all supplied children must be good for a good result. No children means that an otherwise-good local base is sufficient.
@@ -22,6 +51,16 @@ Crossplane's [Condition definitions](https://github.com/crossplane/crossplane-ru
 - Do not infer `Failed` or `WaitingForHuman` escalation from Creating, Deleting, Unavailable, ReconcileError, or ReconcilePaused.
 
 This is a chosen aggregation policy over native Crossplane assertions, not a claim to implement every Crossplane composition controller, readiness-check mode, function result, or claim propagation rule. The local Ready base remains a caller assertion; callers select an appropriate base for their resource lifecycle.
+
+| Effective input | Parent output |
+| --- | --- |
+| Supplied local Ready is False or Unknown | Preserve that local status, reason, and message; child readiness does not replace it. |
+| Good local/default base and any child Ready=False | Ready=False/Creating, with diagnostics for the not-ready children. |
+| Good base, no false children, and missing/Unknown child Ready | Ready=Unknown/ReadinessUnknown. |
+| Good base and all selected children ready | Ready=True/Available. |
+| Supplied local Synced | Preserve it as the parent's local Synced; the child's Synced never substitutes for it. |
+
+There is no Synced output aggregation or sync validity gate in this setup. Omitting local Synced creates no new Synced assertion; an existing one remains unless the caller replaces it. All child readiness contributions have no failure/human-wait escalation. Derived Ready uses the parent's generation, while supplied local Synced retains its own observed-generation value.
 
 ## Adapter and invocation
 

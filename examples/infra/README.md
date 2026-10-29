@@ -1,6 +1,6 @@
 # Infra example and conformance tests
 
-This standalone example accompanies [DESIGN.md](../../DESIGN.md). `infra.go` contains the proposed generic API and a flat Infra rule set; `Infra.Aggregate` only injects those rules into generic `Aggregate`. The production root package remains implementation work.
+This example accompanies [DESIGN.md](../../DESIGN.md). `infra.go` contains the flat Infra rules and their application policies. It uses the experimental root `conditions` package; `Infra.Aggregate` only injects those rules into generic `Aggregate`. `conditions_aliases.go` retains the reference tests' local names for the shared API types.
 
 ```sh
 cd examples/infra
@@ -24,4 +24,4 @@ See [reference_tests.json](reference_tests.json) for the source revision and fil
 
 Legacy provider-specific `SetAvailable` and old wrapper/unstructured-accessor suites exercise APIs this example does not implement; they are outside the imported aggregation/presentation suites. The private package is not an import or test dependency. No test cases in the imported suites are skipped.
 
-The example currently keeps the generic evaluator and application implementations in one package for design review. The production layout in `DESIGN.md` will separate the root library from examples using its public API. Generic freshness/validity, native/foreign codec, bounded diagnostic working memory, and scale remain separate work.
+The generic evaluator is shared with the [OpenShift operator](../openshift) and [Crossplane](../crossplane) examples. Infra policy and its compatibility formatter stay here. Generic freshness/validity, native/foreign codec, bounded diagnostic working memory, and scale remain separate work.

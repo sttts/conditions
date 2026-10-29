@@ -74,7 +74,8 @@
     "Inject a fixed clock instead of normalizing runtime timestamps.",
     "Use the new generic Aggregate(parent, children, rules, local...) entry point.",
     "Replace the mock internal URL consistently in input and expected output with example.invalid.",
-    "Select the legacy Infra formatter explicitly through Formatter; generic opaque rendering is unchanged."
+    "Select the legacy Infra formatter explicitly through Formatter; generic opaque rendering is unchanged.",
+    "Import the shared root evaluator through aliases; the Infra profile no longer contains a private evaluator copy."
   ],
   "scope": "All cases from aggregate_test.go and multiline_test.go. Legacy producer and wrapper/unstructured-adapter APIs are not implemented by this example.",
   "privatePackageExecuted": false,
@@ -88,15 +89,15 @@
   "publicFiles": [
     {
       "path": "infra.go",
-      "sha256": "49418c3dcabaa94d242747d49068561e911d638ac8b8b91b19b6e9c03a6e7f5e"
+      "sha256": "1fb8a44fb42a982e139e4ad4151130e69a59c53f3fe9beba9abff07da6618229"
     },
     {
       "path": "infra_test.go",
-      "sha256": "083ea649c5bb93d234a78dcef2a48a48d7bcb39f0a8cf7ab9b9ba00b8ce914e4"
+      "sha256": "19ca4931ec0bd017a4122cb4e67174e398fa292a73479d2575c4f266946a8fde"
     },
     {
       "path": "legacy_messages.go",
-      "sha256": "c04a5124eabbff8082193ed8d31fe1daf40ab7d0620f7ce406dde2d9ecf47f41"
+      "sha256": "1b5538ea9a6c3ee2e388e47cf5549be319a312c7c6112c05be1a2d17d5a924f2"
     },
     {
       "path": "legacy_messages_test.go",
@@ -109,6 +110,14 @@
     {
       "path": "reference_fixtures_test.go",
       "sha256": "33135bd6df1bb67c1948df117ad8709585dfa853c8b1e4d4e9438d3e52fb1049"
+    },
+    {
+      "path": "conditions_aliases.go",
+      "sha256": "55913992850ff857f3d5c62fa2f7c745ceac2eac60d1a1c2365e849ead318de8"
     }
-  ]
+  ],
+  "sharedImplementation": {
+    "path": "../../conditions.go",
+    "sha256": "c80d9be2779f1d82990a22b7ae6bd1ce5e5f78cb4e5c6b18531a73eab59eb395"
+  }
 }

@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/google/go-cmp v0.7.0
 	github.com/stretchr/testify v1.10.0
+	github.com/sttts/conditions v0.0.0
 	k8s.io/apimachinery v0.34.2
 )
 
@@ -29,3 +30,5 @@ require (
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 )
+
+replace github.com/sttts/conditions => ../..

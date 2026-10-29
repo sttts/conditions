@@ -650,5 +650,5 @@ func (p InfraMessages) Inline(condition metav1.Condition) string {
 
 // limitMessageSize keeps the legacy ASCII behavior and preserves complete UTF-8 characters.
 func limitMessageSize(message string) string {
-	return (BoundedMessages{MaxBytes: 32768}).limit(message)
+	return (BoundedMessages{MaxBytes: 32768}).Format(message, nil)
 }

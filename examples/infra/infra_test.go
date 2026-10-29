@@ -94,6 +94,28 @@ func setConditions(resource Setter, conditions ...metav1.Condition) bool {
 	return changed
 }
 
+// conditionOverlay is only the reference fixture's slice merger.
+type conditionOverlay struct{ conditions []metav1.Condition }
+
+func (o *conditionOverlay) SetConditions(conditions ...metav1.Condition) bool {
+	before := append([]metav1.Condition(nil), o.conditions...)
+	for _, condition := range conditions {
+		index := -1
+		for i := range o.conditions {
+			if o.conditions[i].Type == condition.Type {
+				index = i
+				break
+			}
+		}
+		if index < 0 {
+			o.conditions = append(o.conditions, condition)
+		} else {
+			o.conditions[index] = condition
+		}
+	}
+	return !reflect.DeepEqual(before, o.conditions)
+}
+
 // END OBJECT_EXAMPLE
 
 func fixtureResource(metadata fixtureMetadata, conditions []metav1.Condition) *exampleResource {

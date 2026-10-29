@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Condition aggregation and structured diagnostic promotion
 
-Status: draft design for [`github.com/sttts/conditions`](https://github.com/sttts/conditions). The public API and native diagnostic format are under review; the executable model is design material.
+Status: draft design for [`github.com/sttts/conditions`](https://github.com/sttts/conditions), accompanied by an experimental root package and executable profiles. The public API and native diagnostic format are under review.
 
 ## Summary
 
@@ -23,7 +23,7 @@ Kubernetes controllers routinely combine local assertions and Conditions from de
 
 A shared library should make that interpretation explicit. Assessment, escalation, validity, and diagnostic rendering are separate concerns. Profiles configure mappings and priority; callers supply already-observed objects and keep resource selection, reconciliation, and API-server writes.
 
-The Infrastructure profile below is the worked expressibility example. It includes initialization-aware availability, human-action waits, local precedence, job-like sources, deletion, and summary ordering. A second profile with unrelated Condition names and negative output polarity verifies that the evaluator does not depend on that vocabulary. Dynamo is a potential consuming integration, alongside other controllers.
+The Infrastructure profile below is the worked expressibility example. It includes initialization-aware availability, human-action waits, local precedence, job-like sources, deletion, and summary ordering. Additional OpenShift operator and Crossplane profiles exercise different native representations and aggregation semantics; an unrelated rule-set fixture also uses different names and negative output polarity. Dynamo is a potential consuming integration, alongside other controllers.
 
 ## Project and package conventions
 
@@ -44,12 +44,14 @@ conditions/
   messages.go            # native/foreign diagnostics and bounded rendering
   adapters.go            # representation adapters built on API machinery
   internal/              # implementation details, without application policy
-  examples/infra/        # executable application profile using the public API
+  examples/infra/        # reference application profile and conformance tests
+  examples/openshift/    # operator-status unions and native OpenShift adapters
+  examples/crossplane/   # native Crossplane Conditions and readiness policy
   testdata/              # public, self-contained conformance fixtures
   DESIGN.md
 ```
 
-This is the target package layout, not a claim that the production package exists. The current executable example lives in `examples/infra` as a separate module, together with its reference conformance tests. Infra vocabulary and compatibility behavior stay in examples or consuming applications. Framework-specific adapters remain optional, and neither clients nor application API modules become dependencies of basic aggregation.
+This is the target production layout. The experimental evaluator currently lives in `conditions.go`; all three examples are separate modules consuming that same root package. Infra retains its reference conformance tests. Infra vocabulary and compatibility behavior stay in examples or consuming applications. Framework-specific adapters remain optional, and neither clients nor application API modules become dependencies of basic aggregation.
 
 Use ordinary Go interfaces for real Conditions concepts, Go values for configuration, and Go implementations for exceptional behavior. Document exported symbols and provide external-package examples and tests that use only the public API. Keep development versions pre-v1 until semantics, metadata behavior, and the native format are settled; publish compatibility expectations before v1. Build and test with the supported Go/API-machinery versions, formatting, static checks, and race tests where appropriate. The existing repository Apache-2.0 license applies; retained source notices remain intact.
 
@@ -113,7 +115,7 @@ Document the native message grammar, its format evolution, and fallback rules be
 
 ### Assessment, escalation, and polarity
 
-The following are proposed public library types, not existing APIs:
+The following experimental public types keep assessment, escalation, and polarity independent:
 
 ```go
 // Polarity declares which known boolean status represents a good observation.
@@ -179,8 +181,8 @@ The generic entry point itself has the Infra call shape with one additional argu
 | Condition access | Read existing objects and optionally apply desired Conditions in memory. | `Getter`, `Object`, `Conditioned`, and caller-bound adapters. |
 | Classification | Escalation of an already-bad observation. | `ReasonClassifier` with exact mappings, ordered suffixes, and a default. |
 | Propagation | Eligibility of a diagnosis for an output. | `Always`, `Never`, `BeforeInitialized`, `ExistingChildren`. |
-| Selection | Local checks and at most one diagnosis per child. | `PrefixedChecks`, `ServingChildren`, `DeletingChildren`. |
-| Local precedence and reduction | Preserve selected contributions and their origin. | `LocalBaseFirst`, `LocalOnly`, `ParentChildReduction`, `DeletionReduction`. |
+| Selection | Local checks and zero or more diagnoses per supplied child. | `PrefixedChecks`, Infra’s single-diagnosis selectors, OpenShift’s multi-assertion suffix selector. |
+| Local precedence and reduction | Preserve selected contributions and their origin. | `LocalBaseFirst`, `LocalOnly`, `ChildrenOnly`, and profile-specific reducers. |
 | Local derivation | Derive additional Conditions from computed Conditions and metadata. | `InfraInitialization`; ordinary Go behind `Derivation`. |
 | Unmapped local Conditions | Interpret additional supplied local Conditions when configured. | `InfraLocalConditions`; otherwise preserve the supplied local Condition. |
 | Presentation | Format retained causes and select a parent summary. | `BoundedMessages`, `InfraSummary`. |
@@ -254,9 +256,9 @@ type Propagation interface {
 	Allows(parent, child Object) bool
 }
 
-// ChildSelector selects at most one relevant contribution from one supplied child.
+// ChildSelector selects the relevant contributions from one supplied child.
 type ChildSelector interface {
-	Select(parent, child Object) (Contribution, bool)
+	Select(parent, child Object) []Contribution
 }
 
 // LocalSelector selects the parent's independently supplied local checks.
@@ -290,7 +292,7 @@ type Cause struct {
 	Message   string
 }
 
-// Contribution records one selected diagnosis; compatibility flags belong to this example.
+// Contribution retains a selected observation and its profile-specific diagnostic annotations.
 type Contribution struct {
 	State          State
 	Condition      metav1.Condition
@@ -306,24 +308,34 @@ type Contribution struct {
 
 // Outcome combines a normalized result with its retained diagnostic causes.
 type Outcome struct {
-	State   State
-	Reason  string
-	Summary string
-	Causes  []Cause
-	Copied  *metav1.Condition
+	State              State
+	Reason             string
+	Summary            string
+	Causes             []Cause
+	Copied             *metav1.Condition
+	LastTransitionTime metav1.Time
 }
+
+// GenerationPolicy declares which observed-generation representation an output supports.
+type GenerationPolicy uint8
+
+const (
+	ParentGeneration GenerationPolicy = iota
+	PreserveBaseGeneration
+	NoObservedGeneration
+)
 
 // Aggregation is a flat value composing implementations of Conditions concepts.
 type Aggregation struct {
-	DefaultBase      *metav1.Condition
-	Derived          []Derivation
-	Output           ConditionType
-	Parent           ParentPolicy
-	Local            LocalSelector
-	Children         ChildSelector
-	Reduction        Reducer
-	Messages         Formatter
-	LegacyGeneration bool
+	DefaultBase *metav1.Condition
+	Derived     []Derivation
+	Output      ConditionType
+	Parent      ParentPolicy
+	Local       LocalSelector
+	Children    ChildSelector
+	Reduction   Reducer
+	Messages    Formatter
+	Generation  GenerationPolicy
 }
 
 // ReasonSuffix assigns escalation to a matching reason suffix.
@@ -359,7 +371,7 @@ The generic `Aggregate` stages all evaluations, compares desired and current Con
 
 A child's map key supplies a diagnostic alias and a compatible reason prefix; it never selects policy. Nil children, including typed nil pointers, are skipped as inputs. Original map cardinality can still participate in an explicitly compatible reason implementation.
 
-Compatibility annotations and `LegacyGeneration` remain prototype choices. Optional validity/freshness, complete representation adapters, native/foreign constructors, and the native codec still require their separate contracts. None has implicit Infra Condition names.
+Compatibility annotations in `Contribution` remain prototype choices. `GenerationPolicy` explicitly distinguishes parent generation, Infra-compatible copied/derived generations, and representations with no per-condition generation. General validity/freshness, native/foreign constructors, and the native codec still require their separate contracts. None has implicit Infra Condition names.
 
 ### Design guidelines
 
@@ -505,7 +517,7 @@ It is invalid for a positive `Ready` output to encode a normalized bad result as
 
 Freshness policies interpret the supplied Conditions and generation metadata. Some APIs provide per-condition `observedGeneration`, while others only provide status-level generation metadata or no such guarantee. Representation adapters preserve that distinction. They do not invent observed generations or establish new assertions. A profile must explicitly choose the freshness contract appropriate for its inputs.
 
-By default the output Condition's `observedGeneration` is the parent's supplied generation, not a copied child generation. An explicitly selected legacy metadata policy can preserve source generations or use zero for newly derived Conditions; it cannot silently become the default. A configured generation check prevents a stale supplied Condition from being presented as a current diagnosis. Missing inputs follow the aggregation's declared missing policy.
+By default the output Condition's `observedGeneration` is the parent's supplied generation, not a copied child generation. `PreserveBaseGeneration` explicitly preserves a copied base generation or uses zero for a derived Condition; `NoObservedGeneration` uses zero for representations such as OpenShift operator Conditions; it cannot silently become the default. A future configured freshness check must prevent a stale supplied Condition from being presented as a current diagnosis; the prototype does not yet supply a general freshness policy. Missing inputs follow the aggregation's declared missing policy.
 
 Pure evaluation returns desired Conditions and diagnostics without mutating supplied objects. Generic `Aggregate` applies Conditions in memory through the parent’s setter. Neither path writes to the API server, emits Kubernetes Events, or advances the caller’s status-level observed generation. Existing reconciler error handling and persistence ownership remain authoritative.
 
@@ -523,7 +535,7 @@ Message generation must support large fan-out. Count all relevant contributions,
 
 Infra is the canonical worked example for expressibility. Its call style passes the actual parent object and a named child map, followed by already-computed local Conditions. The generic API preserves this shape with the rules as one additional argument; an optional application wrapper binds those rules.
 
-[The public fixture corpus](examples/infra/fixtures.json) contains 27 aggregation cases and 17 human-summary cases. The [executable API model](examples/infra/infra.go) and [checks](examples/infra/infra_test.go) exercise all 44 cases. The 27 aggregation cases run through both explicit single-output fixture steps and generic `Aggregate(..., InfraRules, ...)`, including repeated-call change reporting and comparison with the injection-only wrapper. Additional tests cover pure evaluation, error atomicity, optional children, resources without sync Conditions, both output polarities, two-call composition/recovery, and an unrelated rule set. The example also runs all 117 cases from the reference aggregation and multiline suites; see [source provenance and scope](examples/infra/reference_tests.json).
+[The public fixture corpus](examples/infra/fixtures.json) contains 27 aggregation cases and 17 human-summary cases. The [shared evaluator](conditions.go) and [Infra profile](examples/infra/infra.go) and [checks](examples/infra/infra_test.go) exercise all 44 cases. The 27 aggregation cases run through both explicit single-output fixture steps and generic `Aggregate(..., InfraRules, ...)`, including repeated-call change reporting and comparison with the injection-only wrapper. Additional tests cover pure evaluation, error atomicity, optional children, resources without sync Conditions, both output polarities, two-call composition/recovery, and an unrelated rule set. The example also runs all 117 cases from the reference aggregation and multiline suites; see [source provenance and scope](examples/infra/reference_tests.json).
 
 The adapted reference suites check 74 aggregation cases, 16 local-condition cases, 10 literal aggregate-message cases, the multiline examples A-F, and 11 inline cases. Aggregate cases also check the original change flag, metadata, and repeated-call idempotence. Reading or running these tests requires no private repository, client, or application API module. They do not constitute execution of the private package or prove the still-undecided new native format or scale.
 
@@ -531,7 +543,7 @@ The example retains compatibility details deliberately: `FailedChecks` does not 
 
 ### Complete Infrastructure example
 
-This section shows the configuration, the actual implementations behind its contracts, and the call. Each `Aggregation` is flat data for one parent output. `ServingInputs` declares the reference vocabulary; it is an application profile type, not vocabulary built into the aggregation engine. The declarations below live together in the companion Go file, so forward references between Go types and values are ordinary Go declarations.
+This section shows the configuration, the actual implementations behind its contracts, and the call. Each `Aggregation` is flat data for one parent output. `ServingInputs` declares the reference vocabulary; it is an application profile type, not vocabulary built into the aggregation engine. The generic implementations below live in the root package; Infra declarations live in its example module. [Type aliases](examples/infra/conditions_aliases.go) keep the profile and its reference tests readable without copying the evaluator. Forward references are ordinary Go declarations.
 
 #### Profile values and polarities
 
@@ -548,9 +560,6 @@ This section shows the configuration, the actual implementations behind its cont
 A nil propagation field disables that candidate category. `BeforeInitialized` and `ExistingChildren` consult explicitly configured Condition types and polarities. The rule set's `Now` dependency is sampled once per call; tests replace it with a fixed function. Single-output evaluation receives that time explicitly.
 
 ```go
-// ServingInputs declares the reference's Condition vocabulary and every source polarity.
-type ServingInputs struct{ Available, Initialized, NonDegraded, UpToDate, Synced, Running, Succeeded, Failed, Deleting ConditionType }
-
 // The reference profile binds Condition names and polarities explicitly as ordinary data.
 var InfraConditions = ServingInputs{
 	Available: ConditionType{"Available", TrueIsGood}, Initialized: ConditionType{"Initialized", TrueIsGood},
@@ -575,7 +584,7 @@ var InfraAvailability = Aggregation{
 		SyncError: beforeInitialization, JobRunning: beforeInitialization, JobFailed: beforeInitialization,
 		BadDescription: "is not available"},
 	Reduction: ParentChildReduction{Inputs: InfraConditions, Output: InfraConditions.Available, Classifier: InfraClassification, BadSuffix: "NotAvailable", BadDescription: "unavailable children"},
-	Messages:  infraMessages, LegacyGeneration: true,
+	Messages:  infraMessages, Generation: PreserveBaseGeneration,
 }
 var InfraNonDegraded = Aggregation{
 	Output: InfraConditions.NonDegraded,
@@ -584,7 +593,7 @@ var InfraNonDegraded = Aggregation{
 	Children: ServingChildren{Inputs: InfraConditions, Condition: InfraConditions.NonDegraded, Classifier: InfraClassification,
 		False: Always{}, Failure: Always{}, Human: Never{}, SyncError: Always{}, Unavailable: Always{}, JobFailed: Always{}, BadDescription: "is degraded"},
 	Reduction: ParentChildReduction{Inputs: InfraConditions, Output: InfraConditions.NonDegraded, Classifier: InfraClassification, BadSuffix: "Degraded", BadDescription: "degraded children"},
-	Messages:  infraMessages, LegacyGeneration: true,
+	Messages:  infraMessages, Generation: PreserveBaseGeneration,
 }
 var InfraUpToDate = Aggregation{
 	Output: InfraConditions.UpToDate,
@@ -593,14 +602,14 @@ var InfraUpToDate = Aggregation{
 	Children: ServingChildren{Inputs: InfraConditions, Condition: InfraConditions.UpToDate, Classifier: InfraClassification,
 		False: Always{}, Failure: Never{}, Human: Always{}, SyncError: Always{}, Uninitialized: Always{}, JobRunning: Always{}, JobFailed: Always{}, BadDescription: "is updating"},
 	Reduction: ParentChildReduction{Inputs: InfraConditions, Output: InfraConditions.UpToDate, Classifier: InfraClassification, BadSuffix: "Updating", BadDescription: "updating children"},
-	Messages:  infraMessages, LegacyGeneration: true,
+	Messages:  infraMessages, Generation: PreserveBaseGeneration,
 }
 var InfraSynced = Aggregation{
 	Output:    InfraConditions.Synced,
 	Parent:    LocalOnly{LocalBaseFirst{Base: InfraConditions.Synced, Classifier: InfraClassification}},
 	Local:     PrefixedChecks{Prefix: "Synced", Polarity: TrueIsGood, Classifier: InfraClassification},
 	Reduction: ParentChildReduction{Inputs: InfraConditions, Output: InfraConditions.Synced, Classifier: InfraClassification, LocalOnly: true},
-	Messages:  infraMessages, LegacyGeneration: true,
+	Messages:  infraMessages, Generation: PreserveBaseGeneration,
 }
 var InfraDeleting = Aggregation{
 	DefaultBase: &metav1.Condition{Type: "Deleting", Status: metav1.ConditionTrue, Reason: "Deleting", Message: "resource is being deleted"},
@@ -608,7 +617,7 @@ var InfraDeleting = Aggregation{
 	Parent:      DeletionBase{Classifier: InfraClassification, Output: InfraConditions.Deleting},
 	Children:    DeletingChildren{Inputs: InfraConditions, Classifier: InfraClassification},
 	Reduction:   DeletionReduction{Inputs: InfraConditions, Classifier: InfraClassification},
-	Messages:    infraMessages, LegacyGeneration: true,
+	Messages:    infraMessages, Generation: PreserveBaseGeneration,
 }
 
 // InfraRules expresses the Infra behavior as data consumed by the generic Aggregate function.
@@ -625,6 +634,7 @@ type InfraProfile struct{ Rules Rules }
 
 // Infra injects InfraRules; the facade has no evaluation or sequencing implementation of its own.
 var Infra = InfraProfile{Rules: InfraRules}
+
 ```
 
 #### Invocation and resulting Conditions
@@ -777,7 +787,7 @@ The excerpt omits timestamp/generation fields. Negative outputs such as `Deletin
 
 #### Generic resource-level aggregation
 
-`Aggregate` and `Evaluate` below are the generic implementation used by all profiles. They consume `Rules` directly. There is no branch on Infra names or a profile type, and no delegation to an opaque application-wide aggregation function.
+`Aggregate` and `Evaluate` below are the root-package implementation used by Infra, OpenShift, and Crossplane. They consume `Rules` directly. There is no branch on Infra names or a profile type, and no delegation to an opaque application-wide aggregation function.
 
 Output rules are matched by Condition type. With `LocalFirst`, rules whose parent policy excludes child contributions for a supplied local base are evaluated during the local input pass. Other supplied bases are deferred to `Rules.Outputs` order. A declared default runs only if no base of that type was supplied. A derivation runs after its output rule produces a result, so the initialized latch can be attached explicitly to availability. The generic code knows no initialization or sync Condition name.
 
@@ -879,6 +889,7 @@ func Evaluate(parent Object, children map[string]Object, rules Rules, local ...m
 	}
 	return working.GetConditions(), nil
 }
+
 ```
 
 #### Single-output evaluation
@@ -905,7 +916,7 @@ func (a Aggregation) Evaluate(parent Object, children map[string]Object, base me
 		}
 		if a.Children != nil && a.Parent.IncludeChildren(base) {
 			for _, child := range sortedChildren(children) {
-				if contribution, ok := a.Children.Select(parent, child.Object); ok {
+				for _, contribution := range a.Children.Select(parent, child.Object) {
 					contribution.Reference = child.Name
 					selected = append(selected, contribution)
 				}
@@ -926,13 +937,20 @@ func (a Aggregation) Evaluate(parent Object, children map[string]Object, base me
 		}
 	}
 	generation := parent.GetGeneration()
-	if a.LegacyGeneration {
+	switch a.Generation {
+	case PreserveBaseGeneration:
 		generation = 0
 		if outcome.Copied != nil {
 			generation = outcome.Copied.ObservedGeneration
 		}
+	case NoObservedGeneration:
+		generation = 0
 	}
-	transition := metav1.NewTime(now)
+
+	transition := outcome.LastTransitionTime
+	if transition.IsZero() {
+		transition = metav1.NewTime(now)
+	}
 	if old, ok := Lookup(parent, a.Output.Type); ok && old.Status == status {
 		transition = old.LastTransitionTime
 	}
@@ -940,6 +958,7 @@ func (a Aggregation) Evaluate(parent Object, children map[string]Object, base me
 		Message: a.Messages.Format(outcome.Summary, outcome.Causes), ObservedGeneration: generation,
 		LastTransitionTime: transition}, nil
 }
+
 ```
 
 #### Classifier, propagation, and local-check implementations
@@ -1020,6 +1039,14 @@ type LocalOnly struct{ LocalBaseFirst }
 
 func (LocalOnly) IncludeChildren(base metav1.Condition) bool { return false }
 
+// ChildrenOnly always reduces supplied children without interpreting a local base.
+type ChildrenOnly struct{}
+
+func (ChildrenOnly) Before(Object, map[string]Object, metav1.Condition) (*Outcome, bool) {
+	return nil, false
+}
+func (ChildrenOnly) IncludeChildren(metav1.Condition) bool { return true }
+
 // PrefixedChecks selects bad local Conditions under one explicitly configured type prefix.
 type PrefixedChecks struct {
 	Prefix     string
@@ -1043,13 +1070,17 @@ func (p PrefixedChecks) Select(parent Object) []Contribution {
 	}
 	return result
 }
+
 ```
 
-#### One diagnosis per child
+#### Infra selects one diagnosis per child
 
 The first matching Go branch wins for a child. Job-like conditions have their own priority and terminate selection even when the result contributes nothing. Regular conditions preserve the source's initialization and sync-human exceptions. In particular, this reference profile does not blanket-invalidate every other Condition whenever `Synced=False`: failed availability can be selected first. A strict validity gate is a different explicitly configured policy, not a correction silently imposed on this profile.
 
 ```go
+// ServingInputs declares the reference's Condition vocabulary and every source polarity.
+type ServingInputs struct{ Available, Initialized, NonDegraded, UpToDate, Synced, Running, Succeeded, Failed, Deleting ConditionType }
+
 // ServingChildren selects one diagnosis per child with separately configured propagation rules.
 type ServingChildren struct {
 	Inputs                                            ServingInputs
@@ -1060,7 +1091,15 @@ type ServingChildren struct {
 	BadDescription                                    string
 }
 
-func (p ServingChildren) Select(parent, child Object) (Contribution, bool) {
+func (p ServingChildren) Select(parent, child Object) []Contribution {
+	result, ok := p.selectOne(parent, child)
+	if !ok {
+		return nil
+	}
+	return []Contribution{result}
+}
+
+func (p ServingChildren) selectOne(parent, child Object) (Contribution, bool) {
 	v := p.Inputs
 	if isDeleting(parent) && isDeleting(child) {
 		return Contribution{}, false
@@ -1136,6 +1175,7 @@ func (p ServingChildren) Select(parent, child Object) (Contribution, bool) {
 		return Contribution{}, false
 	}
 }
+
 ```
 
 #### Origin-aware reduction and configured output reasons
@@ -1267,6 +1307,7 @@ func (r ParentChildReduction) Reduce(base metav1.Condition, objects map[string]O
 		return copyOutcome(base, r.Output, r.Classifier)
 	}
 }
+
 ```
 
 #### Availability-dependent local policies
@@ -1333,6 +1374,7 @@ func (p UpdateBase) Before(parent Object, children map[string]Object, base metav
 	}
 	return nil, false
 }
+
 ```
 
 #### Deletion and teardown policies
@@ -1364,7 +1406,15 @@ type DeletingChildren struct {
 	Classifier Classifier
 }
 
-func (p DeletingChildren) Select(parent, child Object) (Contribution, bool) {
+func (p DeletingChildren) Select(parent, child Object) []Contribution {
+	result, ok := p.selectOne(parent, child)
+	if !ok {
+		return nil
+	}
+	return []Contribution{result}
+}
+
+func (p DeletingChildren) selectOne(parent, child Object) (Contribution, bool) {
 	pick := func(check ConditionType, escalation Escalation, fallback string) (Contribution, bool) {
 		return Contribution{State: State{Bad, escalation}, Condition: check.Read(child), Source: child, Fallback: fallback}, true
 	}
@@ -1458,6 +1508,7 @@ func (p DeletionReduction) Reduce(base metav1.Condition, objects map[string]Obje
 	}
 	return outcome("Deleting", None, groupHead("deleting children", deleting), deleting)
 }
+
 ```
 
 #### Infra derivation, local checks, and the optional facade
@@ -1552,12 +1603,12 @@ type InfraLocalConditions struct{}
 func (InfraLocalConditions) Evaluate(parent Object, local metav1.Condition, now time.Time) (*metav1.Condition, error) {
 	output := ConditionType{local.Type, TrueIsGood}
 	rule := Aggregation{
-		Output:           output,
-		Parent:           LocalOnly{LocalBaseFirst{Base: output, Classifier: InfraClassification}},
-		Local:            PrefixedChecks{Prefix: local.Type, Polarity: TrueIsGood, Classifier: InfraClassification},
-		Reduction:        ParentChildReduction{Output: output, Classifier: InfraClassification, LocalOnly: true},
-		Messages:         infraMessages,
-		LegacyGeneration: true,
+		Output:     output,
+		Parent:     LocalOnly{LocalBaseFirst{Base: output, Classifier: InfraClassification}},
+		Local:      PrefixedChecks{Prefix: local.Type, Polarity: TrueIsGood, Classifier: InfraClassification},
+		Reduction:  ParentChildReduction{Output: output, Classifier: InfraClassification, LocalOnly: true},
+		Messages:   infraMessages,
+		Generation: PreserveBaseGeneration,
 	}
 	return rule.Evaluate(parent, nil, local, now)
 }
@@ -1571,6 +1622,7 @@ func (p InfraProfile) Aggregate(parent Conditioned, children map[string]Object, 
 func (p InfraProfile) Evaluate(parent Object, children map[string]Object, local ...metav1.Condition) ([]metav1.Condition, error) {
 	return Evaluate(parent, children, p.Rules, local...)
 }
+
 ```
 
 #### Diagnostic helpers and proof boundary
@@ -1618,6 +1670,7 @@ func sortedChildren(children map[string]Object) []namedObject {
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	return result
 }
+
 func cause(c Contribution) Cause {
 	label := c.Reference
 	if c.CheckName != "" {
@@ -1803,13 +1856,49 @@ func (p BoundedMessages) limit(text string) string {
 	}
 	return text[:end] + "..."
 }
+
 ```
 
 </details>
 
 The independent two-call composition check classifies `DependencyFailed` on the first input and `ChildrenFailed` on the second. The first returned Condition is supplied as a Condition of the next child resource. Replacing the original supplied input with a good Condition lets both outputs recover despite retained previous failures. Neither classifier reads messages.
 
-The general validity/freshness API, complete representation adapters, bounded working memory, and native/foreign codec remain open. They do not require changing the resource-oriented call style.
+The general validity/freshness API, reusable adapter contracts, bounded working memory, and native/foreign codec remain open. The OpenShift and Crossplane examples below exercise concrete native adapters without making their API modules core dependencies. They do not require changing the resource-oriented call style.
+
+### OpenShift operator status example
+
+The [OpenShift profile](examples/openshift) consumes native `operatorv1.OperatorStatus` from an operator configuration object and publishes native `configv1.ClusterOperator` Conditions. Its inputs are **the operator’s assertions**, such as `ConfigDegraded` and `RouteDegraded`, rather than the Conditions of its operand workloads. It expresses library-go’s [suffix union](https://github.com/openshift/library-go/blob/release-4.19/pkg/operator/status/condition.go) used by the [operator StatusSyncer](https://github.com/openshift/library-go/blob/release-4.19/pkg/operator/status/status_controller.go).
+
+A single supplied operator contributes every matching controller Condition to each output. This requires `ChildSelector.Select` to return a slice: Infra’s choice of at most one diagnosis per child is profile policy, not a core restriction. Available and Upgradeable use `TrueIsGood`; Progressing and Degraded use `FalseIsGood`. Missing data is Unknown, a known opposite status wins over Unknown, and all four outputs remain independent. Optional inertia is an ordinary Go implementation in the profile. Reasons and multiline messages retain the native OpenShift union conventions.
+
+```go
+changed, err := c.Aggregate(
+    openshift.ClusterOperator{ClusterOperator: cluster},
+    map[string]c.Object{
+        "Operator": openshift.Operator{Object: operator, Status: &operator.Status.OperatorStatus},
+    },
+    openshift.OpenShiftRules,
+)
+```
+
+The native schemas have no per-condition observed generation. Their adapters preserve that distinction, with `NoObservedGeneration` selected explicitly for outputs. Existing unrelated status fields and Conditions remain owned by their caller. [Executable tests](examples/openshift/openshift_test.go) cover union semantics, inertia, native metadata, recovery, and rejection of operand Conditions as operator input. The [README](examples/openshift/README.md) contains complete status YAML and the scope relative to the full upstream StatusSyncer.
+
+### Crossplane Conditions example
+
+The [Crossplane profile](examples/crossplane) uses the actual `ConditionedStatus`, Condition type, and constructors from `crossplane-runtime/v2` v2.0.0. Its adapter preserves every native Condition field while exposing the root package’s slice-based accessors. Upstream API modules remain dependencies of the example alone.
+
+This example chooses to roll up child Ready into parent Ready while keeping the parent’s Synced assertion local. Ready False for Creating, Deleting, or Unavailable is ordinary bad state, not implicit failure escalation. Missing readiness is Unknown. A supplied local bad/unknown Ready base keeps precedence; otherwise the declared good base is reduced with child readiness. Configured output reasons are Available, Creating, and ReadinessUnknown.
+
+```go
+changed, err := c.Aggregate(
+    crossplane.Adapter{Resource: parent},
+    map[string]c.Object{"database": crossplane.Adapter{Resource: database}},
+    crossplane.CrossplaneRules,
+    crossplane.ToCondition(xpv1.ReconcileSuccess()),
+)
+```
+
+A supplied `Ready=True` can coexist with `Synced=False/ReconcileError` or ReconcilePaused. Neither the core nor this profile universally invalidates readiness on a sync error. This demonstrates why sync validity is an optional semantic policy, not a built-in Condition name. It does not implement every Crossplane composition or function-readiness mode. [Tests](examples/crossplane/crossplane_test.go) and [status YAML](examples/crossplane/README.md) make the configured boundary explicit. Reserved, not-yet-implemented Healthy in this pinned API is not treated as an available readiness mechanism.
 
 ## Compatibility and adoption
 
@@ -1828,15 +1917,17 @@ Stable reason strings should be retained where possible. New aggregate reasons, 
 
 ## Validation
 
-The Infrastructure example and its companion checks are executable design material, including generic resource-level calls and the demonstrated two-call semantic composition and recovery. The remaining fixtures below define production-library acceptance requirements. Semantic composition and message-format validation remain separate test groups.
+The root package and all three example modules are executable design material. Infra includes generic resource-level calls and the demonstrated two-call semantic composition and recovery. The remaining fixtures below define production-library acceptance requirements. Semantic composition and message-format validation remain separate test groups.
 
-The example is checked with Go 1.25 and `k8s.io/apimachinery` v0.34.2 in an isolated module. All 27 semantic fixtures, their 27 resource-level caller replays and idempotence checks, the 17 presentation fixtures, output-polarity checks, compatible two-call composition/recovery, pure and failed-evaluation nonmutation, optional children without sync, an unrelated rule set using different names and negative output polarity, and the printed generic invocation passed. In addition, all 117 ported reference cases run without skips. This is execution of the adapted public cases, not a build of the private package. [reference_tests.json](examples/infra/reference_tests.json) records the source revision, blob identities, case counts, and adaptations. GitHub Actions runs formatting checks and the full example suite with the race detector.
+The example is checked with Go 1.25 and `k8s.io/apimachinery` v0.34.2 in an isolated module. All 27 semantic fixtures, their 27 resource-level caller replays and idempotence checks, the 17 presentation fixtures, output-polarity checks, compatible two-call composition/recovery, pure and failed-evaluation nonmutation, optional children without sync, an unrelated rule set using different names and negative output polarity, and the printed generic invocation passed. In addition, all 117 ported reference cases run without skips. This is execution of the adapted public cases, not a build of the private package. [reference_tests.json](examples/infra/reference_tests.json) records the source revision, blob identities, case counts, and adaptations. GitHub Actions runs formatting checks and race tests in a four-module matrix: core, Infra, OpenShift operator, and Crossplane. OpenShift tests cover four union truth tables, multi-assertion selection, optional inertia, native metadata, and recovery. Crossplane tests cover the native adapter, child readiness, local Synced independence, recovery, and bounded foreign diagnostics.
 
 To reproduce the model checks from the repository root:
 
 ```sh
-cd examples/infra
 go test -race ./...
+go -C examples/infra test -race ./...
+go -C examples/openshift test -race ./...
+go -C examples/crossplane test -race ./...
 ```
 
 ### Semantic composition fixture
@@ -1912,8 +2003,8 @@ The public Infrastructure behavior matrix is the self-contained conformance corp
 ## Implementation plan
 
 1. Review and refine the executable concept interfaces and Infrastructure example above. Finalize the general validity/freshness and adapter contracts, remove prototype-only compatibility leaks from the shared API, and validate against the reference integration suites. Keep orchestration in Go and settle the native format before publishing it.
-2. Add the pure evaluator and bounded message formatting behind the exported `conditions` API, with polarity, validity, escalation, aggregation validation, codec, and package boundary tests.
-3. Build a reference-profile test fixture and an unrelated application profile. Show that the existing Infrastructure behavior can be expressed without resource-specific branches in the engine; keep Dynamo mappings in its integration layer.
+2. Refine the experimental root evaluator and bounded formatting, adding general validity/freshness, codec, and package boundary tests. Preserve the existing polarity, escalation, composition, and reference-profile tests.
+3. Retain the executable Infra, OpenShift operator, and Crossplane profiles as expressibility tests without resource-specific branches in the engine; keep Dynamo mappings in its integration layer.
 4. Integrate a representative native -> native condition promotion chain and a foreign-resource adapter with existing conditions and reasons. A DCD -> DGD -> DGDR chain is one possible Dynamo example, not a constraint on the library.
 5. Validate resource-specific interpretation, mixed-version behavior, and preservation of caller-owned lifecycle policy.
 6. Measure aggregation and formatting across small and large input sets, document the externally visible message changes, and roll out incrementally.
@@ -1946,7 +2037,7 @@ This misrepresents recoverable failures and introduces a parent lifecycle latch 
 
 ## Open decisions
 
-1. Finalize the concept interfaces and standard implementations after reviewing the executable Infrastructure example. Settle validity/freshness, adapters, bounded working memory, and placement of compatibility metadata. The production package remains unimplemented; the companion example and its 44-case corpus are executable design material.
+1. Finalize the concept interfaces and standard implementations after reviewing the executable Infrastructure example. Settle validity/freshness, adapters, bounded working memory, and placement of compatibility metadata. The shared root package and its three profiles remain experimental; the Infra corpus includes 44 original fixtures and all 117 ported reference cases.
 2. Finalize the native message grammar, reserved-header escaping, format evolution, and legacy fallback. The literal-block notation is a proposed encoding, not a committed wire contract.
 3. Choose initial example and integration reason-classification/output-reason policies while preserving consumer expectations. Configure the Infrastructure profile's suffix conventions independently.
 4. Set the default diagnostic-detail size/depth limits and select performance acceptance thresholds after baseline measurements. Seven lines is a presentation default, not a latency guarantee.

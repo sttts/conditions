@@ -79,22 +79,100 @@ type Formatter interface {
 }
 ```
 
-The root package provides two implementations:
+Set `rule.Messages` to a format implementation. Applications can provide another implementation, as the OpenShift operator example does for its native union messages.
 
-| Format | Behavior |
-| --- | --- |
-| `MultilineMessages` | Structured, indented causes that can be promoted through multiple levels; deepest branches condense to fit a line budget. |
-| `BoundedMessages` | Opaque source text with line/byte limits and explicit omission notices. |
+| Format | Use when | Behavior |
+| --- | --- | --- |
+| `MultilineMessages` | Source messages use the colon-and-indentation format. | Retains nested causes and condenses deepest branches to fit the line budget. |
+| `BoundedMessages` | Source messages are opaque text, such as foreign diagnostics or logs. | Preserves source text without parsing its apparent structure and reports omitted detail lines. |
 
-Select the multiline format on an existing aggregation:
+Both examples below use the same summary and cause:
 
 ```go
-rule.Messages = conditions.MultilineMessages{MaxLines: 7, InlineChars: 80}
+summary := "service unavailable"
+causes := []conditions.Cause{{
+    Reference: "Worker",
+    Message:   "bootstrap failed:\n  Job/init: image pull failed",
+}}
 ```
 
-This is a library format, available to every profile. Applications can also implement `Formatter`, as the OpenShift operator example does for its native union messages. Format selection is explicit; diagnostic text never determines Condition classification.
+The output blocks show Condition message text. Format selection and budgets do not change the Condition's status, reason, or escalation.
 
-See [FORMATS.md](FORMATS.md) for the multiline syntax, promotion, budget behavior, and input-format assumptions.
+### MultilineMessages
+
+```go
+multiline := conditions.MultilineMessages{MaxLines: 7, InlineChars: 40}
+rule.Messages = multiline
+multilineMessage := multiline.Format(summary, causes)
+```
+
+The cause's message is interpreted in this explicitly selected format. Promotion retains the nested `Job/init` cause, with two spaces per level:
+
+```text
+service unavailable:
+  Worker: bootstrap failed:
+    Job/init: image pull failed
+```
+
+With `MaxLines: 2`, the deepest branch becomes a chain while the parent summary remains on its own line:
+
+```text
+service unavailable:
+  Worker: bootstrap failed: Job/init: image pull failed
+```
+
+With `MaxLines: 1`, the entire single-child branch becomes one line:
+
+```text
+service unavailable: Worker: bootstrap failed: Job/init: image pull failed
+```
+
+For a separate UI or log summary, call `multiline.Inline(metav1.Condition{Message: multilineMessage})`. With `InlineChars: 40`, it retains the last fitting part of the chain:
+
+```text
+service unavailable: Worker
+```
+
+`MaxLines` includes the summary and defaults to seven. Condensation visits deepest branches first; a branching cause can retain its summary while its children are omitted. `InlineChars` defaults to 80 and limits added detail; negative values allow unlimited detail. The inline view preserves an existing single-line summary even when it exceeds that target budget. Formatted messages are capped at 32,768 bytes, with UTF-8-safe truncation and a trailing `...` when the byte cap is reached.
+
+### BoundedMessages
+
+```go
+bounded := conditions.BoundedMessages{MaxLines: 7, InlineChars: 40}
+rule.Messages = bounded
+boundedMessage := bounded.Format(summary, causes)
+```
+
+The source is opaque. Its existing indentation is retained inside the outer details block; the apparent `Job/init` heading is not decoded into a child node:
+
+```text
+service unavailable:
+  Worker: bootstrap failed:
+      Job/init: image pull failed
+```
+
+With `MaxLines: 2`, the budget retains the summary and an omission notice. Both detail lines are counted as omitted:
+
+```text
+service unavailable:
+  … 2 detail lines omitted
+```
+
+With `MaxLines: 1`, the notice joins the summary:
+
+```text
+service unavailable (2 detail lines omitted)
+```
+
+`bounded.Inline(metav1.Condition{Message: boundedMessage})` uses only the first line, subject to the configured hard character limit:
+
+```text
+service unavailable:
+```
+
+`MaxLines` includes the summary and defaults to seven. `MaxBytes` defaults to 32,768; byte truncation appends `...` at a UTF-8 boundary. `InlineChars` defaults to 80; an overlong first line is shortened with `…`. The inline view leaves the stored detailed message untouched.
+
+See [FORMATS.md](FORMATS.md) for the complete syntax, promotion rules, and input-format assumptions, and [multiline_test.go](multiline_test.go) for executable format examples.
 
 ## Examples
 

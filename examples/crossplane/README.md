@@ -1,6 +1,6 @@
 # Crossplane Conditions
 
-This example uses Crossplane's actual `Condition`, `ConditionedStatus`, and constructors from `crossplane-runtime/v2` v2.0.0. It supplies a representation adapter and an explicit example readiness policy to the same root `conditions.Aggregate` implementation used by Infra and OpenShift.
+This example uses Crossplane's actual `Condition`, `ConditionedStatus`, and constructors from `crossplane-runtime/v2` v2.0.0. It supplies a representation adapter and an explicit example readiness policy to the shared root `conditions.Aggregate` implementation.
 
 ## Native assertions and configured policy
 

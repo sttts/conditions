@@ -1,0 +1,2087 @@
+{
+  "schemaVersion": 1,
+  "scope": "semantic and selected literal-message fixtures; original Go suite and new native codec are not executed by this validator",
+  "fixtures": [
+    {
+      "name": "availability-init-False-False",
+      "previous": [
+        {
+          "type": "Initialized",
+          "status": "False",
+          "reason": "NotYetAvailable",
+          "message": ""
+        }
+      ],
+      "bases": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Available": {
+              "type": "Available",
+              "status": "False",
+              "reason": "DependencyFailed",
+              "message": "Required dependency could not initialize"
+            },
+            "Initialized": {
+              "type": "Initialized",
+              "status": "False",
+              "reason": "NotYetAvailable",
+              "message": ""
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "available",
+        "initialized"
+      ],
+      "expected": {
+        "Available": {
+          "status": "False",
+          "reason": "WorkerFailed"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "availability-init-True-False",
+      "previous": [
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        }
+      ],
+      "bases": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Available": {
+              "type": "Available",
+              "status": "False",
+              "reason": "DependencyFailed",
+              "message": "Required dependency could not initialize"
+            },
+            "Initialized": {
+              "type": "Initialized",
+              "status": "False",
+              "reason": "NotYetAvailable",
+              "message": ""
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "available",
+        "initialized"
+      ],
+      "expected": {
+        "Available": {
+          "status": "True",
+          "reason": "Available"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "availability-init-True-True",
+      "previous": [
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        }
+      ],
+      "bases": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Available": {
+              "type": "Available",
+              "status": "False",
+              "reason": "DependencyFailed",
+              "message": "Required dependency could not initialize"
+            },
+            "Initialized": {
+              "type": "Initialized",
+              "status": "True",
+              "reason": "Initialized",
+              "message": ""
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "available",
+        "initialized"
+      ],
+      "expected": {
+        "Available": {
+          "status": "False",
+          "reason": "WorkerFailed"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "sync-human-init-False-False",
+      "previous": [
+        {
+          "type": "Initialized",
+          "status": "False",
+          "reason": "NotYetAvailable",
+          "message": ""
+        }
+      ],
+      "bases": [
+        {
+          "type": "Synced",
+          "status": "True",
+          "reason": "Synced",
+          "message": ""
+        },
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        },
+        {
+          "type": "NonDegraded",
+          "status": "True",
+          "reason": "FullyAvailable",
+          "message": ""
+        },
+        {
+          "type": "UpToDate",
+          "status": "True",
+          "reason": "UpToDate",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Synced": {
+              "type": "Synced",
+              "status": "False",
+              "reason": "WaitingForHuman",
+              "message": "Approval is required"
+            },
+            "Available": {
+              "type": "Available",
+              "status": "True",
+              "reason": "Available",
+              "message": ""
+            },
+            "NonDegraded": {
+              "type": "NonDegraded",
+              "status": "True",
+              "reason": "FullyAvailable",
+              "message": ""
+            },
+            "UpToDate": {
+              "type": "UpToDate",
+              "status": "True",
+              "reason": "UpToDate",
+              "message": ""
+            },
+            "Initialized": {
+              "type": "Initialized",
+              "status": "False",
+              "reason": "NotYetAvailable",
+              "message": ""
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "synced",
+        "available",
+        "initialized",
+        "nonDegraded",
+        "upToDate"
+      ],
+      "expected": {
+        "Synced": {
+          "status": "True"
+        },
+        "Available": {
+          "status": "False",
+          "reason": "WorkerNotSynced"
+        },
+        "UpToDate": {
+          "status": "False",
+          "reason": "NotYetInitialized"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "sync-human-init-False-True",
+      "previous": [
+        {
+          "type": "Initialized",
+          "status": "False",
+          "reason": "NotYetAvailable",
+          "message": ""
+        }
+      ],
+      "bases": [
+        {
+          "type": "Synced",
+          "status": "True",
+          "reason": "Synced",
+          "message": ""
+        },
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        },
+        {
+          "type": "NonDegraded",
+          "status": "True",
+          "reason": "FullyAvailable",
+          "message": ""
+        },
+        {
+          "type": "UpToDate",
+          "status": "True",
+          "reason": "UpToDate",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Synced": {
+              "type": "Synced",
+              "status": "False",
+              "reason": "WaitingForHuman",
+              "message": "Approval is required"
+            },
+            "Available": {
+              "type": "Available",
+              "status": "True",
+              "reason": "Available",
+              "message": ""
+            },
+            "NonDegraded": {
+              "type": "NonDegraded",
+              "status": "True",
+              "reason": "FullyAvailable",
+              "message": ""
+            },
+            "UpToDate": {
+              "type": "UpToDate",
+              "status": "True",
+              "reason": "UpToDate",
+              "message": ""
+            },
+            "Initialized": {
+              "type": "Initialized",
+              "status": "True",
+              "reason": "Initialized",
+              "message": ""
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "synced",
+        "available",
+        "initialized",
+        "nonDegraded",
+        "upToDate"
+      ],
+      "expected": {
+        "Synced": {
+          "status": "True"
+        },
+        "Available": {
+          "status": "False",
+          "reason": "WorkerWaitingForHuman"
+        },
+        "UpToDate": {
+          "status": "False",
+          "reason": "NotYetInitialized"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "sync-human-init-True-False",
+      "previous": [
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        }
+      ],
+      "bases": [
+        {
+          "type": "Synced",
+          "status": "True",
+          "reason": "Synced",
+          "message": ""
+        },
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        },
+        {
+          "type": "NonDegraded",
+          "status": "True",
+          "reason": "FullyAvailable",
+          "message": ""
+        },
+        {
+          "type": "UpToDate",
+          "status": "True",
+          "reason": "UpToDate",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Synced": {
+              "type": "Synced",
+              "status": "False",
+              "reason": "WaitingForHuman",
+              "message": "Approval is required"
+            },
+            "Available": {
+              "type": "Available",
+              "status": "True",
+              "reason": "Available",
+              "message": ""
+            },
+            "NonDegraded": {
+              "type": "NonDegraded",
+              "status": "True",
+              "reason": "FullyAvailable",
+              "message": ""
+            },
+            "UpToDate": {
+              "type": "UpToDate",
+              "status": "True",
+              "reason": "UpToDate",
+              "message": ""
+            },
+            "Initialized": {
+              "type": "Initialized",
+              "status": "False",
+              "reason": "NotYetAvailable",
+              "message": ""
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "synced",
+        "available",
+        "initialized",
+        "nonDegraded",
+        "upToDate"
+      ],
+      "expected": {
+        "Synced": {
+          "status": "True"
+        },
+        "Available": {
+          "status": "True",
+          "reason": "Available"
+        },
+        "UpToDate": {
+          "status": "False",
+          "reason": "WorkerWaitingForHuman"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "sync-human-init-True-True",
+      "previous": [
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        }
+      ],
+      "bases": [
+        {
+          "type": "Synced",
+          "status": "True",
+          "reason": "Synced",
+          "message": ""
+        },
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        },
+        {
+          "type": "NonDegraded",
+          "status": "True",
+          "reason": "FullyAvailable",
+          "message": ""
+        },
+        {
+          "type": "UpToDate",
+          "status": "True",
+          "reason": "UpToDate",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Synced": {
+              "type": "Synced",
+              "status": "False",
+              "reason": "WaitingForHuman",
+              "message": "Approval is required"
+            },
+            "Available": {
+              "type": "Available",
+              "status": "True",
+              "reason": "Available",
+              "message": ""
+            },
+            "NonDegraded": {
+              "type": "NonDegraded",
+              "status": "True",
+              "reason": "FullyAvailable",
+              "message": ""
+            },
+            "UpToDate": {
+              "type": "UpToDate",
+              "status": "True",
+              "reason": "UpToDate",
+              "message": ""
+            },
+            "Initialized": {
+              "type": "Initialized",
+              "status": "True",
+              "reason": "Initialized",
+              "message": ""
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "synced",
+        "available",
+        "initialized",
+        "nonDegraded",
+        "upToDate"
+      ],
+      "expected": {
+        "Synced": {
+          "status": "True"
+        },
+        "Available": {
+          "status": "True",
+          "reason": "Available"
+        },
+        "UpToDate": {
+          "status": "False",
+          "reason": "WorkerWaitingForHuman"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "local-base-beats-child-failure",
+      "previous": [],
+      "bases": [
+        {
+          "type": "Available",
+          "status": "False",
+          "reason": "LocalError",
+          "message": "Local setup failed"
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Available": {
+              "type": "Available",
+              "status": "False",
+              "reason": "DependencyFailed",
+              "message": "Required dependency could not initialize"
+            },
+            "Initialized": {
+              "type": "Initialized",
+              "status": "True",
+              "reason": "Initialized",
+              "message": ""
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "available"
+      ],
+      "expected": {
+        "Available": {
+          "status": "False",
+          "reason": "LocalError",
+          "message": "Local setup failed"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "local-unknown-admits-checks-but-not-children",
+      "previous": [
+        {
+          "type": "AvailableHealth",
+          "status": "False",
+          "reason": "HealthFailed",
+          "message": "Health check failed"
+        }
+      ],
+      "bases": [
+        {
+          "type": "Available",
+          "status": "Unknown",
+          "reason": "LocalUnknown",
+          "message": "Local state unknown"
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Available": {
+              "type": "Available",
+              "status": "False",
+              "reason": "DependencyFailed",
+              "message": "Required dependency could not initialize"
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "available"
+      ],
+      "expected": {
+        "Available": {
+          "status": "False",
+          "reason": "HealthFailed",
+          "message": "failed Health check: Health check failed"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "one-diagnosis-prefers-failed-availability",
+      "previous": [
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        }
+      ],
+      "bases": [
+        {
+          "type": "Synced",
+          "status": "True",
+          "reason": "Synced",
+          "message": ""
+        },
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        },
+        {
+          "type": "NonDegraded",
+          "status": "True",
+          "reason": "FullyAvailable",
+          "message": ""
+        },
+        {
+          "type": "UpToDate",
+          "status": "True",
+          "reason": "UpToDate",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Synced": {
+              "type": "Synced",
+              "status": "False",
+              "reason": "SyncError",
+              "message": "Sync failed"
+            },
+            "Available": {
+              "type": "Available",
+              "status": "False",
+              "reason": "DependencyFailed",
+              "message": "Required dependency could not initialize"
+            },
+            "NonDegraded": {
+              "type": "NonDegraded",
+              "status": "True",
+              "reason": "FullyAvailable",
+              "message": ""
+            },
+            "Initialized": {
+              "type": "Initialized",
+              "status": "False",
+              "reason": "NotYetAvailable",
+              "message": ""
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "synced",
+        "available",
+        "initialized",
+        "nonDegraded",
+        "upToDate"
+      ],
+      "expected": {
+        "Available": {
+          "status": "True"
+        },
+        "NonDegraded": {
+          "status": "False",
+          "reason": "WorkerFailed",
+          "message": "children failed:\n  Worker: Required dependency could not initialize (DependencyFailed)"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "ordinary-sync-is-not-automatic-failure",
+      "previous": [
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        }
+      ],
+      "bases": [
+        {
+          "type": "Synced",
+          "status": "True",
+          "reason": "Synced",
+          "message": ""
+        },
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        },
+        {
+          "type": "NonDegraded",
+          "status": "True",
+          "reason": "FullyAvailable",
+          "message": ""
+        },
+        {
+          "type": "UpToDate",
+          "status": "True",
+          "reason": "UpToDate",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Synced": {
+              "type": "Synced",
+              "status": "False",
+              "reason": "SyncError",
+              "message": "Sync failed"
+            },
+            "Available": {
+              "type": "Available",
+              "status": "True",
+              "reason": "Available",
+              "message": ""
+            },
+            "NonDegraded": {
+              "type": "NonDegraded",
+              "status": "True",
+              "reason": "FullyAvailable",
+              "message": ""
+            },
+            "Initialized": {
+              "type": "Initialized",
+              "status": "True",
+              "reason": "Initialized",
+              "message": ""
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "synced",
+        "available",
+        "initialized",
+        "nonDegraded",
+        "upToDate"
+      ],
+      "expected": {
+        "Available": {
+          "status": "True"
+        },
+        "NonDegraded": {
+          "status": "False",
+          "reason": "WorkerNotSynced"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "empty-child-set-is-good",
+      "previous": [],
+      "bases": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        }
+      ],
+      "children": [],
+      "steps": [
+        "available",
+        "initialized"
+      ],
+      "expected": {
+        "Available": {
+          "status": "True",
+          "reason": "Available"
+        },
+        "Initialized": {
+          "status": "True"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "present-child-missing-condition-is-false-legacy",
+      "previous": [],
+      "bases": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {},
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "available",
+        "initialized"
+      ],
+      "expected": {
+        "Available": {
+          "status": "False",
+          "reason": "WorkerNotAvailable"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "local-failure-ranks-before-child-failure",
+      "previous": [
+        {
+          "type": "AvailableHealth",
+          "status": "False",
+          "reason": "HealthFailed",
+          "message": "Health failed"
+        }
+      ],
+      "bases": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Available": {
+              "type": "Available",
+              "status": "False",
+              "reason": "DependencyFailed",
+              "message": "Required dependency could not initialize"
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "available"
+      ],
+      "expected": {
+        "Available": {
+          "status": "False",
+          "reason": "HealthFailed"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "child-failure-ranks-before-local-human",
+      "previous": [
+        {
+          "type": "AvailableApproval",
+          "status": "False",
+          "reason": "WaitingForHuman",
+          "message": "Approval required"
+        }
+      ],
+      "bases": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Available": {
+              "type": "Available",
+              "status": "False",
+              "reason": "DependencyFailed",
+              "message": "Required dependency could not initialize"
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "available"
+      ],
+      "expected": {
+        "Available": {
+          "status": "False",
+          "reason": "WorkerFailed"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "job-failure-before-job-success",
+      "previous": [],
+      "bases": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Job",
+          "conditions": {
+            "Running": {
+              "type": "Running",
+              "status": "False",
+              "reason": "",
+              "message": ""
+            },
+            "Failed": {
+              "type": "Failed",
+              "status": "True",
+              "reason": "JobFailed",
+              "message": "Job failed"
+            },
+            "Succeeded": {
+              "type": "Succeeded",
+              "status": "True",
+              "reason": "",
+              "message": ""
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "available"
+      ],
+      "expected": {
+        "Available": {
+          "status": "False",
+          "reason": "JobFailed"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "successful-job-before-pending",
+      "previous": [],
+      "bases": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Job",
+          "conditions": {
+            "Running": {
+              "type": "Running",
+              "status": "False",
+              "reason": "",
+              "message": ""
+            },
+            "Succeeded": {
+              "type": "Succeeded",
+              "status": "True",
+              "reason": "",
+              "message": ""
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "available"
+      ],
+      "expected": {
+        "Available": {
+          "status": "True",
+          "reason": "Available"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "initialized-latch-persists",
+      "previous": [
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        }
+      ],
+      "bases": [
+        {
+          "type": "Available",
+          "status": "False",
+          "reason": "DependencyFailed",
+          "message": "Unavailable"
+        }
+      ],
+      "children": [],
+      "steps": [
+        "available",
+        "initialized"
+      ],
+      "expected": {
+        "Initialized": {
+          "status": "True",
+          "reason": "Initialized"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "two-local-failures-preserve-failedchecks",
+      "previous": [
+        {
+          "type": "AvailableA",
+          "status": "False",
+          "reason": "AFailed",
+          "message": ""
+        },
+        {
+          "type": "AvailableB",
+          "status": "False",
+          "reason": "BFailed",
+          "message": ""
+        }
+      ],
+      "bases": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        }
+      ],
+      "children": [],
+      "steps": [
+        "available"
+      ],
+      "expected": {
+        "Available": {
+          "status": "False",
+          "reason": "FailedChecks"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "nil-slot-keeps-plural-reason",
+      "previous": [],
+      "bases": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Available": {
+              "type": "Available",
+              "status": "False",
+              "reason": "DependencyFailed",
+              "message": "Required dependency could not initialize"
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        },
+        null
+      ],
+      "steps": [
+        "available"
+      ],
+      "expected": {
+        "Available": {
+          "status": "False",
+          "reason": "ChildrenFailed"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    },
+    {
+      "name": "deletion-running-before-failed-job",
+      "previous": [],
+      "bases": [
+        {
+          "type": "Deleting",
+          "status": "True",
+          "reason": "Deleting",
+          "message": "resource is being deleted"
+        }
+      ],
+      "children": [
+        {
+          "reference": "Job",
+          "conditions": {
+            "Running": {
+              "type": "Running",
+              "status": "True",
+              "reason": "Running",
+              "message": "Still running"
+            },
+            "Failed": {
+              "type": "Failed",
+              "status": "True",
+              "reason": "JobFailed",
+              "message": ""
+            }
+          },
+          "createdAt": "2026-10-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "deleting"
+      ],
+      "expected": {
+        "Deleting": {
+          "status": "True",
+          "reason": "Deleting"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": true,
+        "deletedAt": "2026-10-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "deletion-failed-teardown",
+      "previous": [],
+      "bases": [
+        {
+          "type": "Deleting",
+          "status": "True",
+          "reason": "Deleting",
+          "message": "resource is being deleted"
+        }
+      ],
+      "children": [
+        {
+          "reference": "Job",
+          "conditions": {
+            "Running": {
+              "type": "Running",
+              "status": "False",
+              "reason": "",
+              "message": ""
+            },
+            "Failed": {
+              "type": "Failed",
+              "status": "True",
+              "reason": "JobFailed",
+              "message": "Tear-down failed"
+            }
+          },
+          "createdAt": "2026-10-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "deleting"
+      ],
+      "expected": {
+        "Deleting": {
+          "status": "True",
+          "reason": "TearDownFailed"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": true,
+        "deletedAt": "2026-10-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "deletion-human-before-running",
+      "previous": [],
+      "bases": [
+        {
+          "type": "Deleting",
+          "status": "True",
+          "reason": "Deleting",
+          "message": "resource is being deleted"
+        }
+      ],
+      "children": [
+        {
+          "reference": "Job",
+          "conditions": {
+            "Synced": {
+              "type": "Synced",
+              "status": "False",
+              "reason": "WaitingForHuman",
+              "message": "Approval is required"
+            },
+            "Running": {
+              "type": "Running",
+              "status": "True",
+              "reason": "",
+              "message": ""
+            }
+          },
+          "createdAt": "2026-10-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "deleting"
+      ],
+      "expected": {
+        "Deleting": {
+          "status": "True",
+          "reason": "WaitingForHuman"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": true,
+        "deletedAt": "2026-10-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "deleting-children-mask-teardown",
+      "previous": [
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        }
+      ],
+      "bases": [
+        {
+          "type": "Deleting",
+          "status": "True",
+          "reason": "Deleting",
+          "message": "resource is being deleted"
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Deleting": {
+              "type": "Deleting",
+              "status": "True",
+              "reason": "Deleting",
+              "message": "Deleting"
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": "2026-10-01T00:00:00Z",
+          "deleting": true
+        },
+        {
+          "reference": "Job",
+          "conditions": {
+            "Running": {
+              "type": "Running",
+              "status": "False",
+              "reason": "",
+              "message": ""
+            },
+            "Failed": {
+              "type": "Failed",
+              "status": "True",
+              "reason": "JobFailed",
+              "message": ""
+            }
+          },
+          "createdAt": "2026-10-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false
+        }
+      ],
+      "steps": [
+        "deleting"
+      ],
+      "expected": {
+        "Deleting": {
+          "status": "True",
+          "reason": "Deleting"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": true,
+        "deletedAt": "2026-10-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "deletion-sync-error",
+      "previous": [],
+      "bases": [
+        {
+          "type": "Deleting",
+          "status": "True",
+          "reason": "Deleting",
+          "message": "resource is being deleted"
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "conditions": {
+            "Synced": {
+              "type": "Synced",
+              "status": "False",
+              "reason": "SyncError",
+              "message": "Sync failed"
+            }
+          },
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": "2026-10-01T00:00:00Z",
+          "deleting": true
+        }
+      ],
+      "steps": [
+        "deleting"
+      ],
+      "expected": {
+        "Deleting": {
+          "status": "True",
+          "reason": "ChildrenDeletionError"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": true,
+        "deletedAt": "2026-10-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "deletion-empty-copies-base",
+      "previous": [],
+      "bases": [
+        {
+          "type": "Deleting",
+          "status": "True",
+          "reason": "Deleting",
+          "message": "resource is being deleted"
+        }
+      ],
+      "children": [],
+      "steps": [
+        "deleting"
+      ],
+      "expected": {
+        "Deleting": {
+          "status": "True",
+          "reason": "Deleting",
+          "message": "resource is being deleted"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": true,
+        "deletedAt": "2026-10-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "replacement-healthy-input-clears-failure",
+      "previous": [
+        {
+          "type": "Available",
+          "status": "False",
+          "reason": "WorkerFailed",
+          "message": "Previously failed"
+        },
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        }
+      ],
+      "bases": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        }
+      ],
+      "children": [
+        {
+          "reference": "Worker",
+          "createdAt": "2026-01-01T00:00:00Z",
+          "deletedAt": null,
+          "deleting": false,
+          "conditions": {
+            "Available": {
+              "type": "Available",
+              "status": "True",
+              "reason": "Available",
+              "message": ""
+            },
+            "Initialized": {
+              "type": "Initialized",
+              "status": "True",
+              "reason": "Initialized",
+              "message": ""
+            }
+          }
+        }
+      ],
+      "steps": [
+        "available",
+        "initialized"
+      ],
+      "expected": {
+        "Available": {
+          "status": "True",
+          "reason": "Available"
+        },
+        "Initialized": {
+          "status": "True",
+          "reason": "Initialized"
+        }
+      },
+      "parentMetadata": {
+        "name": "Parent",
+        "reference": "Parent",
+        "deleting": false,
+        "deletedAt": null
+      }
+    }
+  ],
+  "presentationFixtures": [
+    {
+      "name": "empty",
+      "conditions": [],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "empty",
+      "expectedPhase": "Initializing",
+      "expectedMessage": ""
+    },
+    {
+      "name": "sync-human-before-deletion",
+      "conditions": [
+        {
+          "type": "Synced",
+          "status": "False",
+          "reason": "WaitingForHuman",
+          "message": "Approve sync"
+        },
+        {
+          "type": "Deleting",
+          "status": "True",
+          "reason": "Deleting",
+          "message": ""
+        }
+      ],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "Synced.human",
+      "expectedPhase": "WaitingForHuman",
+      "expectedMessage": "Approve sync"
+    },
+    {
+      "name": "sync-error",
+      "conditions": [
+        {
+          "type": "Synced",
+          "status": "False",
+          "reason": "SyncError",
+          "message": "Cannot sync"
+        }
+      ],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "Synced.ordinary",
+      "expectedPhase": "Error",
+      "expectedMessage": "Cannot sync"
+    },
+    {
+      "name": "deletion-human",
+      "conditions": [
+        {
+          "type": "Deleting",
+          "status": "True",
+          "reason": "WaitingForHuman",
+          "message": "Approve deletion"
+        }
+      ],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "Deleting.human",
+      "expectedPhase": "WaitingForHuman",
+      "expectedMessage": "Approve deletion"
+    },
+    {
+      "name": "deletion-condition",
+      "conditions": [
+        {
+          "type": "Deleting",
+          "status": "True",
+          "reason": "Deleting",
+          "message": "Deleting children"
+        }
+      ],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "Deleting.ordinary",
+      "expectedPhase": "Deleting",
+      "expectedMessage": "Deleting children"
+    },
+    {
+      "name": "deletion-metadata",
+      "conditions": [
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        }
+      ],
+      "parentMetadata": {
+        "deleting": true
+      },
+      "expectedRow": "deletion-metadata",
+      "expectedPhase": "Deleting",
+      "expectedMessage": ""
+    },
+    {
+      "name": "failed-before-initializing",
+      "conditions": [
+        {
+          "type": "Available",
+          "status": "False",
+          "reason": "DependencyFailed",
+          "message": "Dependency failed"
+        },
+        {
+          "type": "Initialized",
+          "status": "False",
+          "reason": "NotYetAvailable",
+          "message": ""
+        }
+      ],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "failed",
+      "expectedPhase": "Failed",
+      "expectedMessage": "Dependency failed"
+    },
+    {
+      "name": "initializing-with-availability-detail",
+      "conditions": [
+        {
+          "type": "Available",
+          "status": "False",
+          "reason": "Deploying",
+          "message": "Deploying child"
+        },
+        {
+          "type": "Initialized",
+          "status": "False",
+          "reason": "NotYetAvailable",
+          "message": "Wait"
+        }
+      ],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "initializing-unavailable",
+      "expectedPhase": "Initializing",
+      "expectedMessage": "Deploying child"
+    },
+    {
+      "name": "initializing-local",
+      "conditions": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        },
+        {
+          "type": "Initialized",
+          "status": "False",
+          "reason": "NotYetAvailable",
+          "message": "Wait for availability"
+        }
+      ],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "initializing",
+      "expectedPhase": "Initializing",
+      "expectedMessage": "Wait for availability"
+    },
+    {
+      "name": "unavailable-human",
+      "conditions": [
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        },
+        {
+          "type": "Available",
+          "status": "False",
+          "reason": "ChildrenWaitingForHuman",
+          "message": "Approve change"
+        }
+      ],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "unavailable-human",
+      "expectedPhase": "ChildrenWaitingForHuman",
+      "expectedMessage": "Approve change"
+    },
+    {
+      "name": "unavailable-reason-fallback",
+      "conditions": [
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        },
+        {
+          "type": "Available",
+          "status": "False",
+          "reason": "NotAvailable",
+          "message": ""
+        }
+      ],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "unavailable",
+      "expectedPhase": "Unavailable",
+      "expectedMessage": "NotAvailable"
+    },
+    {
+      "name": "degraded-human",
+      "conditions": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        },
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        },
+        {
+          "type": "NonDegraded",
+          "status": "False",
+          "reason": "WaitingForHuman",
+          "message": "Human action required"
+        }
+      ],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "degraded-human",
+      "expectedPhase": "WaitingForHuman",
+      "expectedMessage": "Human action required"
+    },
+    {
+      "name": "degraded-and-updating",
+      "conditions": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        },
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        },
+        {
+          "type": "NonDegraded",
+          "status": "False",
+          "reason": "Degraded",
+          "message": "A node is down"
+        },
+        {
+          "type": "UpToDate",
+          "status": "False",
+          "reason": "Updating",
+          "message": "Updating child"
+        }
+      ],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "degraded-updating",
+      "expectedPhase": "Degraded and updating",
+      "expectedMessage": "Updating child"
+    },
+    {
+      "name": "degraded",
+      "conditions": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        },
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        },
+        {
+          "type": "UpToDate",
+          "status": "True",
+          "reason": "UpToDate",
+          "message": ""
+        },
+        {
+          "type": "NonDegraded",
+          "status": "False",
+          "reason": "Degraded",
+          "message": "A node is down"
+        }
+      ],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "degraded",
+      "expectedPhase": "Degraded",
+      "expectedMessage": "A node is down"
+    },
+    {
+      "name": "updating-human",
+      "conditions": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        },
+        {
+          "type": "NonDegraded",
+          "status": "True",
+          "reason": "FullyAvailable",
+          "message": ""
+        },
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        },
+        {
+          "type": "UpToDate",
+          "status": "False",
+          "reason": "ChildrenWaitingForHuman",
+          "message": "Approve rollout"
+        }
+      ],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "updating-human",
+      "expectedPhase": "ChildrenWaitingForHuman",
+      "expectedMessage": "Approve rollout"
+    },
+    {
+      "name": "updating",
+      "conditions": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        },
+        {
+          "type": "NonDegraded",
+          "status": "True",
+          "reason": "FullyAvailable",
+          "message": ""
+        },
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        },
+        {
+          "type": "UpToDate",
+          "status": "False",
+          "reason": "Updating",
+          "message": "Rolling out"
+        }
+      ],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "updating",
+      "expectedPhase": "Updating",
+      "expectedMessage": "Rolling out"
+    },
+    {
+      "name": "ready",
+      "conditions": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "Available",
+          "message": ""
+        },
+        {
+          "type": "NonDegraded",
+          "status": "True",
+          "reason": "FullyAvailable",
+          "message": ""
+        },
+        {
+          "type": "UpToDate",
+          "status": "True",
+          "reason": "UpToDate",
+          "message": ""
+        },
+        {
+          "type": "Initialized",
+          "status": "True",
+          "reason": "Initialized",
+          "message": ""
+        }
+      ],
+      "parentMetadata": {
+        "deleting": false
+      },
+      "expectedRow": "ready",
+      "expectedPhase": "Ready",
+      "expectedMessage": ""
+    }
+  ],
+  "validation": {
+    "semanticFixtures": 27,
+    "presentationFixtures": 17,
+    "method": "generic Aggregate and Evaluate consume Rules directly; Infra facade only injects InfraRules",
+    "originalGoSuiteExecuted": false,
+    "nativeCodecSuiteExecuted": false,
+    "goExample": {
+      "date": "2026-10-29",
+      "source": "model.go",
+      "checks": "model_test.go",
+      "sourceSHA256": "619c3ef79b5dd27d633587a06683314de097557e148b62fd699e8b2688e35a70",
+      "checksSHA256": "926ba6d044b4953536866dd88a41b2df9003b605f33eb13921dc22b6239fd089",
+      "method": "isolated Go module; go test ./...",
+      "goVersion": "go1.25.5 darwin/arm64",
+      "apimachineryVersion": "v0.34.2",
+      "semanticFixturesPassed": 27,
+      "callerReplayFixturesPassed": 27,
+      "presentationFixturesPassed": 17,
+      "additionalChecks": [
+        "output polarity",
+        "compatible two-call composition and recovery through generic Evaluate",
+        "complete invocation through generic Aggregate",
+        "idempotent change reporting and facade equivalence",
+        "pure evaluation leaves supplied parent unchanged",
+        "invalid configuration leaves supplied parent unchanged",
+        "optional typed-nil children and no sync condition",
+        "unrelated Rules with Accepting input and negative Faulted output",
+        "slice-based Getter and Setter with library-owned change reporting"
+      ],
+      "result": "pass",
+      "originalGoSuiteExecuted": false,
+      "nativeCodecSuiteExecuted": false,
+      "scaleBenchmarksExecuted": false,
+      "genericCall": "Aggregate(parent, children, rules, localConditions...)",
+      "module": "github.com/sttts/conditions/design/infra"
+    }
+  },
+  "role": "behavior corpus for the domain-interface design; no interpreter configuration is required"
+}

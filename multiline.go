@@ -1,28 +1,47 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-package infra
+package conditions
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// DefaultConditionMessageMaxLines controls the default max lines for formatted
-// aggregate condition messages, including the summary line.
-const DefaultConditionMessageMaxLines = 7
+// MultilineMessages renders and promotes the colon-and-indentation message format.
+type MultilineMessages struct {
+	// MaxLines includes the summary; nonpositive values use seven lines.
+	MaxLines int
 
-// ChildStatus represents a child’s display label and its message.
-// Display is a concise identifier (e.g., Kind/Name, or Kind) used in the
-// details block. Message may be multi-line and may end with a trailing ':'
-// to indicate nested details in subsequent lines.
-type ChildStatus struct {
-	Display string
-	Message string
+	// InlineChars budgets detail; zero uses 80 and negative values allow unlimited detail.
+	InlineChars int
 }
 
-// FormatAggregateMessage renders a summary with an optional details block of
+// Format promotes child messages in this format and condenses them to the configured line budget.
+func (p MultilineMessages) Format(summary string, causes []Cause) string {
+	return formatAggregateMessage([]string{summary}, causes, p.MaxLines)
+}
+
+// Inline derives a concise chain while preserving the summary when it exceeds the detail budget.
+func (p MultilineMessages) Inline(condition metav1.Condition) string {
+	message := condition.Message
+	if message == "" {
+		message = condition.Reason
+	}
+	limit := p.InlineChars
+	if limit == 0 {
+		limit = 80
+	}
+	return inlineMessage(message, limit)
+}
+
+// defaultConditionMessageMaxLines controls the default max lines for formatted
+// aggregate condition messages, including the summary line.
+const defaultConditionMessageMaxLines = 7
+
+// formatAggregateMessage renders a summary with an optional details block of
 // children. When children are present, the expanded form ends the summary line
 // with a trailing ':' and places each child on its own line, followed by any
 // nested lines from the child message, indented by two additional spaces.
@@ -34,10 +53,10 @@ type ChildStatus struct {
 // branches) while re-evaluating the overall line count after each condensation.
 // When no further condensation is possible, it falls back to a single-line
 // summary that mirrors the chaining rules (branch-degree aware inline output).
-func FormatAggregateMessage(summaryHeads []string, children []ChildStatus, maxLines int) string {
+func formatAggregateMessage(summaryHeads []string, children []Cause, maxLines int) string {
 	heads := normalizeHeads(summaryHeads)
 	if maxLines <= 0 {
-		maxLines = DefaultConditionMessageMaxLines
+		maxLines = defaultConditionMessageMaxLines
 	}
 
 	nodes := buildChildNodes(children)
@@ -49,7 +68,7 @@ func FormatAggregateMessage(summaryHeads []string, children []ChildStatus, maxLi
 		return limitMessageSize(renderInline(heads, nodes))
 	}
 
-	working := cloneNodes(nodes)
+	working := nodes
 	childBudget := maxLines - 1
 	if childBudget < 0 {
 		childBudget = 0
@@ -207,17 +226,6 @@ func totalLines(nodes []*messageNode) int {
 	return total
 }
 
-func cloneNodes(nodes []*messageNode) []*messageNode {
-	if len(nodes) == 0 {
-		return nil
-	}
-	cloned := make([]*messageNode, len(nodes))
-	for i, node := range nodes {
-		cloned[i] = node.clone()
-	}
-	return cloned
-}
-
 func writeNode(b *strings.Builder, node *messageNode, depth int) {
 	b.WriteString("\n")
 	b.WriteString(strings.Repeat(" ", depth*2))
@@ -241,7 +249,7 @@ func writeNode(b *strings.Builder, node *messageNode, depth int) {
 	}
 }
 
-func buildChildNodes(children []ChildStatus) []*messageNode {
+func buildChildNodes(children []Cause) []*messageNode {
 	nodes := make([]*messageNode, 0, len(children))
 	for _, child := range children {
 		lines := normalizeLines(child.Message)
@@ -254,7 +262,7 @@ func buildChildNodes(children []ChildStatus) []*messageNode {
 			}
 		}
 		node := &messageNode{
-			Display:  strings.TrimSpace(child.Display),
+			Display:  strings.TrimSpace(child.Reference),
 			Summary:  first,
 			Children: parseMessageChildren(rest),
 		}
@@ -500,12 +508,12 @@ func lineCount(s string) int {
 	return 1 + strings.Count(s, "\n")
 }
 
-// InlineMessage re-derives the single-line inline form from a (possibly
+// inlineMessage re-derives the single-line inline form from a (possibly
 // multiline) condition message. When maxChars > 0 it builds the chain
 // incrementally, only appending the next level if there is space. If the
 // message is single-line and exceeds the budget, it is returned as-is
 // (no hard truncation).
-func InlineMessage(msg string, maxChars int) string {
+func inlineMessage(msg string, maxChars int) string {
 	if msg == "" {
 		return ""
 	}
@@ -553,7 +561,7 @@ func chainWithBudget(prefix string, node *messageNode, maxChars int) string {
 	result := prefix
 	for _, seg := range segments {
 		candidate := result + ": " + seg
-		if maxChars > 0 && len(candidate) > maxChars {
+		if maxChars > 0 && utf8.RuneCountInString(candidate) > maxChars {
 			return result
 		}
 		result = candidate
@@ -613,12 +621,12 @@ func namesWithBudget(prefix string, nodes []*messageNode, maxChars int) string {
 
 	// append names one by one while they fit
 	result := prefix + ": " + names[0]
-	if maxChars > 0 && len(result) > maxChars {
+	if maxChars > 0 && utf8.RuneCountInString(result) > maxChars {
 		return prefix
 	}
 	for _, name := range names[1:] {
 		candidate := result + ", " + name
-		if maxChars > 0 && len(candidate) > maxChars {
+		if maxChars > 0 && utf8.RuneCountInString(candidate) > maxChars {
 			return result + "..."
 		}
 		result = candidate
@@ -626,29 +634,7 @@ func namesWithBudget(prefix string, nodes []*messageNode, maxChars int) string {
 	return result
 }
 
-// InfraMessages opts this reference profile into the pre-existing Infra message grammar.
-type InfraMessages struct{ MaxLines, InlineChars int }
-
-func (p InfraMessages) Format(summary string, causes []Cause) string {
-	children := make([]ChildStatus, 0, len(causes))
-	for _, cause := range causes {
-		children = append(children, ChildStatus{Display: cause.Reference, Message: cause.Message})
-	}
-	return FormatAggregateMessage([]string{summary}, children, p.MaxLines)
-}
-func (p InfraMessages) Inline(condition metav1.Condition) string {
-	message := condition.Message
-	if message == "" {
-		message = condition.Reason
-	}
-	limit := p.InlineChars
-	if limit <= 0 {
-		limit = 80
-	}
-	return InlineMessage(message, limit)
-}
-
-// limitMessageSize keeps the legacy ASCII behavior and preserves complete UTF-8 characters.
+// limitMessageSize enforces the Condition message size limit without splitting UTF-8 characters.
 func limitMessageSize(message string) string {
-	return (BoundedMessages{MaxBytes: 32768}).Format(message, nil)
+	return (BoundedMessages{MaxBytes: 32768}).limit(message)
 }

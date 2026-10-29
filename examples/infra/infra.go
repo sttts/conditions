@@ -434,7 +434,7 @@ var InfraConditions = ServingInputs{
 var InfraClassification Classifier = ReasonClassifier{Suffixes: []ReasonSuffix{{"Failed", Failed}, {"WaitingForHuman", WaitingForHuman}}}
 var beforeInitialization Propagation = BeforeInitialized{Parent: InfraConditions.Initialized}
 var existingChildren Propagation = ExistingChildren{Parent: InfraConditions.Initialized, Child: InfraConditions.Initialized}
-var infraMessages Formatter = InfraMessages{MaxLines: 7, InlineChars: 80}
+var infraMessages Formatter = MultilineMessages{MaxLines: 7, InlineChars: 80}
 
 // Each flat value composes configured implementations of the domain interfaces.
 var InfraAvailability = Aggregation{

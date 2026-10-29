@@ -68,6 +68,34 @@ One call evaluates one resource boundary. Passing its resulting Conditions into 
 
 See [DESIGN.md](DESIGN.md) for the full API, worked configurations, composition tests, and open decisions.
 
+## Message formats
+
+An aggregation selects its message format through the `Formatter` interface:
+
+```go
+type Formatter interface {
+    Format(summary string, causes []Cause) string
+    Inline(condition metav1.Condition) string
+}
+```
+
+The root package provides two implementations:
+
+| Format | Behavior |
+| --- | --- |
+| `MultilineMessages` | Structured, indented causes that can be promoted through multiple levels; deepest branches condense to fit a line budget. |
+| `BoundedMessages` | Opaque source text with line/byte limits and explicit omission notices. |
+
+Select the multiline format on an existing aggregation:
+
+```go
+rule.Messages = conditions.MultilineMessages{MaxLines: 7, InlineChars: 80}
+```
+
+This is a library format, available to every profile. Applications can also implement `Formatter`, as the OpenShift operator example does for its native union messages. Format selection is explicit; diagnostic text never determines Condition classification.
+
+See [FORMATS.md](FORMATS.md) for the multiline syntax, promotion, budget behavior, and input-format assumptions.
+
 ## Examples
 
 Each example contains rules, executable calls, and tests. The framework examples also include representation adapters and status YAML.
@@ -82,7 +110,7 @@ All examples consume the same root package. Framework API dependencies stay in s
 
 ## Project status
 
-The package is experimental and its API is under review. The current implementation includes the shared evaluator, opaque bounded diagnostics, and profile-specific formatters. A general native diagnostic codec, reusable validity/freshness policies, and large-fan-out performance validation remain design work.
+The package is experimental and its API is under review. The current implementation includes the shared evaluator and selectable multiline and opaque message formats. Explicit provenance and escaping for mixed-format promotion, reusable validity/freshness policies, and large-fan-out performance validation remain design work.
 
 ## Development
 

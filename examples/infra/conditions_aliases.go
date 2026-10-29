@@ -41,6 +41,7 @@ type (
 	LocalOnly         = c.LocalOnly
 	PrefixedChecks    = c.PrefixedChecks
 	BoundedMessages   = c.BoundedMessages
+	MultilineMessages = c.MultilineMessages
 	GenerationPolicy  = c.GenerationPolicy
 )
 

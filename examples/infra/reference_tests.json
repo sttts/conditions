@@ -74,9 +74,10 @@
     "Inject a fixed clock instead of normalizing runtime timestamps.",
     "Use the new generic Aggregate(parent, children, rules, local...) entry point.",
     "Replace the mock internal URL consistently in input and expected output with example.invalid.",
-    "Select the legacy Infra formatter explicitly through Formatter; generic opaque rendering is unchanged.",
+    "Select the root MultilineMessages implementation explicitly through Formatter; the separate opaque format is unchanged.",
     "Import the shared root evaluator through aliases; the Infra profile no longer contains a private evaluator copy.",
-    "Use boolean-returning native setters and let Aggregate return the setter change flag directly."
+    "Use boolean-returning native setters and let Aggregate return the setter change flag directly.",
+    "Exercise multiline fixtures through the public format; map the reference inline zero limit to explicit unlimited detail via a negative InlineChars value."
   ],
   "scope": "All cases from aggregate_test.go and multiline_test.go. Legacy producer and wrapper/unstructured-adapter APIs are not implemented by this example.",
   "privatePackageExecuted": false,
@@ -90,19 +91,15 @@
   "publicFiles": [
     {
       "path": "infra.go",
-      "sha256": "1fb8a44fb42a982e139e4ad4151130e69a59c53f3fe9beba9abff07da6618229"
+      "sha256": "e16babea111b011bb3fcfe9e0d5bb99ce23ae133ca2ca4ad83f1fa1110d7c940"
     },
     {
       "path": "infra_test.go",
       "sha256": "657fb7886fe83191566541800a08cc2bdfe4d886609d09ec347925758f404ba1"
     },
     {
-      "path": "legacy_messages.go",
-      "sha256": "1b5538ea9a6c3ee2e388e47cf5549be319a312c7c6112c05be1a2d17d5a924f2"
-    },
-    {
-      "path": "legacy_messages_test.go",
-      "sha256": "6b89e5c8513661e483ea6231698956e91cbd4cc7410382e28e8c23c39f8c2fc3"
+      "path": "multiline_test.go",
+      "sha256": "75b6b3ea4d7a7bde63cb825d52609c06f5a34257c758ad1bd684457bc604dfaf"
     },
     {
       "path": "reference_aggregate_test.go",
@@ -114,11 +111,21 @@
     },
     {
       "path": "conditions_aliases.go",
-      "sha256": "55913992850ff857f3d5c62fa2f7c745ceac2eac60d1a1c2365e849ead318de8"
+      "sha256": "c07eeca5ec75367ba6ce8e1a2515c7edc95e3a9f15dc26d177e96c283e0363f1"
     }
   ],
   "sharedImplementation": {
     "path": "../../conditions.go",
-    "sha256": "f568090260bea0ea0c208ada3757bdc4198b0f77f8cd87692cf3659d68247bf9"
-  }
+    "sha256": "8c7402676ba63eb5e67d7ac8c47e3f209b903162ce818ae9fff32fb686c9252c"
+  },
+  "sharedFormats": [
+    {
+      "path": "../../messages.go",
+      "sha256": "84f64b0259afd968cd6a193a394db49f7244997766427ee9592e92f055bc32fb"
+    },
+    {
+      "path": "../../multiline.go",
+      "sha256": "0ef367eada6308252a8fe70e78e09160d2d448d279fa816bab69a79261660240"
+    }
+  ]
 }

@@ -41,7 +41,8 @@ conditions/
   types.go               # public accessors and normalized result types
   rules.go               # flat rules and validation
   aggregate.go           # generic Aggregate and Evaluate
-  messages.go            # native/foreign diagnostics and bounded rendering
+  messages.go            # Formatter, Cause, and opaque bounded rendering
+  multiline.go           # structured multiline format and promotion
   adapters.go            # representation adapters built on API machinery
   internal/              # implementation details, without application policy
   examples/infra/        # reference application profile and conformance tests
@@ -51,9 +52,9 @@ conditions/
   DESIGN.md
 ```
 
-This is the target production layout. The experimental evaluator currently lives in `conditions.go`, with the plain-setter adapter in `adapters.go`; all three examples are separate modules consuming that same root package. Infra retains its reference conformance tests. Infra vocabulary and compatibility behavior stay in examples or consuming applications. Framework-specific adapters remain optional, and neither clients nor application API modules become dependencies of basic aggregation.
+This is the target production layout. The experimental evaluator currently lives in `conditions.go`, with the plain-setter adapter in `adapters.go` and shared message formats in `messages.go` and `multiline.go`; all three examples are separate modules consuming that same root package. Infra retains its reference conformance tests. Infra vocabulary and compatibility behavior stay in examples or consuming applications. Framework-specific adapters remain optional, and neither clients nor application API modules become dependencies of basic aggregation.
 
-Use ordinary Go interfaces for real Conditions concepts, Go values for configuration, and Go implementations for exceptional behavior. Document exported symbols and provide external-package examples and tests that use only the public API. Keep development versions pre-v1 until semantics, metadata behavior, and the native format are settled; publish compatibility expectations before v1. Build and test with the supported Go/API-machinery versions, formatting, static checks, and race tests where appropriate. The existing repository Apache-2.0 license applies; retained source notices remain intact.
+Use ordinary Go interfaces for real Conditions concepts, Go values for configuration, and Go implementations for exceptional behavior. Document exported symbols and provide external-package examples and tests that use only the public API. Keep development versions pre-v1 until semantics, metadata behavior, and format-version compatibility are settled; publish compatibility expectations before v1. Build and test with the supported Go/API-machinery versions, formatting, static checks, and race tests where appropriate. The existing repository Apache-2.0 license applies; retained source notices remain intact.
 
 ## Requirements
 
@@ -111,7 +112,7 @@ Inputs are already-computed local and child Conditions, resource identity and ge
 
 The core has no built-in DCD, DGD, DGDR, or Infrastructure aggregation. Condition names such as `Available`, `NonDegraded`, `Initialized`, and `Synced`, reason conventions, and lifecycle-specific precedence live in profiles. The library supplies the assessment, validity, escalation, propagation, and rendering primitives with which those profiles are expressed. Default escalation and rendering policies may be provided, but an application's condition vocabulary and lifecycle cannot be prerequisites for using them.
 
-Document the native message grammar, its format evolution, and fallback rules before publishing the format. Native decoding is used to retain supported diagnostic structure. Semantic classification comes from the aggregation and Condition fields and does not depend on the message codec.
+Document each message format’s grammar, evolution, and fallback rules before stabilizing a format version. [FORMATS.md](FORMATS.md) describes the available multiline and opaque formats. Native decoding is used to retain supported diagnostic structure. Semantic classification comes from the aggregation and Condition fields and does not depend on the message codec.
 
 ### Assessment, escalation, and polarity
 
@@ -185,7 +186,7 @@ The generic entry point itself has the Infra call shape with one additional argu
 | Local precedence and reduction | Preserve selected contributions and their origin. | `LocalBaseFirst`, `LocalOnly`, `ChildrenOnly`, and profile-specific reducers. |
 | Local derivation | Derive additional Conditions from computed Conditions and metadata. | `InfraInitialization`; ordinary Go behind `Derivation`. |
 | Unmapped local Conditions | Interpret additional supplied local Conditions when configured. | `InfraLocalConditions`; otherwise preserve the supplied local Condition. |
-| Presentation | Format retained causes and select a parent summary. | `BoundedMessages`, `InfraSummary`. |
+| Presentation | Format retained causes and select a parent summary. | `MultilineMessages`, `BoundedMessages`, `InfraSummary`. |
 
 API declarations have one-line comments. Configured rule data, concrete calls, and implementation bodies appear in the separate example section.
 
@@ -283,9 +284,21 @@ type Reducer interface {
 
 // Formatter renders diagnostics separately from semantic selection and reduction.
 type Formatter interface {
-	Format(string, []Cause) string
-	Inline(metav1.Condition) string
+	Format(summary string, causes []Cause) string
+	Inline(condition metav1.Condition) string
 }
+
+// MultilineMessages renders and promotes the colon-and-indentation message format.
+type MultilineMessages struct {
+	// MaxLines includes the summary; nonpositive values use seven lines.
+	MaxLines int
+
+	// InlineChars budgets detail; zero uses 80 and negative values allow unlimited detail.
+	InlineChars int
+}
+
+// BoundedMessages renders causes as opaque text with explicit omission notices.
+type BoundedMessages struct{ MaxLines, MaxBytes, InlineChars int }
 
 // Presenter selects a human summary from already-computed parent Conditions.
 type Presenter interface {
@@ -482,7 +495,21 @@ Preservation is a property of those two compatible configurations, not a guarant
 
 No consumer derives severity from message wording, indentation, punctuation, or truncation markers. If a reason's escalation is unspecified, the profile's explicit fallback applies; the engine does not guess from English words.
 
-### Native and foreign diagnostic messages
+### Message format implementations
+
+`Formatter` is the extension interface for Condition message formats. The root package provides `MultilineMessages` for structured multiline promotion and `BoundedMessages` for opaque source text. Any application can select either through `Aggregation.Messages` or supply another implementation. The lifecycle profile selects the same library format available to all callers; it does not own a privileged or separate formatter.
+
+```go
+rule.Messages = MultilineMessages{MaxLines: 7, InlineChars: 80}
+```
+
+The [multiline contract](FORMATS.md) specifies summary/cause layout, colon-and-indentation parsing, two-space output nesting, deepest-first condensation, inline chains, line/byte limits, and Unicode behavior. Source messages supplied to this format are explicitly expected to use that syntax. Selecting `BoundedMessages` keeps source text opaque. Neither format changes the normalized assessment, escalation, polarity, or output reason.
+
+[Generic format tests](multiline_test.go) exercise multiple promotion levels, condensation, explicit format selection, line endings, UTF-8 size limits, and character budgets. Aggregation tests vary both formats and budgets with positive and negative output polarity. All existing lifecycle message fixtures run through the public `MultilineMessages` implementation without a copy in the example.
+
+### Mixed native and foreign diagnostic messages (proposed extension)
+
+The following extends the current format selection with explicit per-source provenance and opaque boundaries across serialization. It is not yet part of the implemented homogeneous multiline contract.
 
 Internally, preserve a diagnostic tree until rendering. Native nodes carry a summary, ordered child causes, and omission counts. Foreign nodes carry an opaque text block. A foreign block remains foreign even after it is included in a native parent's message and that parent is later promoted again.
 
@@ -499,7 +526,7 @@ Resource is not ready: 1 failed dependency:
         Check the configured location
 ```
 
-The codec treats the complete literal block as text and never turns its apparent inner headings into native children. Exact escaping and legacy-decoding fixtures must be settled before the native format is published. The reference implementation's generic colon/indentation parsing must not be applied to arbitrary third-party messages.
+The codec treats the complete literal block as text and never turns its apparent inner headings into native children. Exact escaping, format versioning, and fallback fixtures must be settled before this mixed-source extension is published. The reference implementation's generic colon/indentation parsing must not be applied to arbitrary third-party messages.
 
 Adopt the following behavior from the referenced multiline design:
 
@@ -579,7 +606,7 @@ Infra is the canonical worked example for expressibility. Its call style passes 
 
 [The public fixture corpus](examples/infra/fixtures.json) contains 27 aggregation cases and 17 human-summary cases. The [shared evaluator](conditions.go) and [Infra profile](examples/infra/infra.go) and [checks](examples/infra/infra_test.go) exercise all 44 cases. The 27 aggregation cases run through both explicit single-output fixture steps and generic `Aggregate(..., InfraRules, ...)`, including repeated-call change reporting and comparison with the injection-only wrapper. Additional tests cover pure evaluation, error atomicity, optional children, resources without sync Conditions, both output polarities, two-call composition/recovery, and an unrelated rule set. The example also runs all 117 cases from the reference aggregation and multiline suites; see [source provenance and scope](examples/infra/reference_tests.json).
 
-The adapted reference suites check 74 aggregation cases, 16 local-condition cases, 10 literal aggregate-message cases, the multiline examples A-F, and 11 inline cases. Aggregate cases also check the original change flag, metadata, and repeated-call idempotence. Reading or running these tests requires no private repository, client, or application API module. They do not constitute execution of the private package or prove the still-undecided new native format or scale.
+The adapted reference suites check 74 aggregation cases, 16 local-condition cases, 10 literal aggregate-message cases, the multiline examples A-F, and 11 inline cases. Aggregate cases also check the original change flag, metadata, and repeated-call idempotence. Reading or running these tests requires no private repository, client, or application API module. They exercise the root multiline format through its public interface. They do not constitute execution of the private package or prove mixed-format provenance/escaping or scale.
 
 The example retains compatibility details deliberately: `FailedChecks` does not end in `Failed`; an unknown child can enter the ordinary false branch; ignored nil map entries can affect singular/plural reason selection; and failed availability can outrank an ordinary sync error on the same child. Runtime aliases affect compatible diagnostics and reasons, not configured policy selection.
 
@@ -613,7 +640,7 @@ var InfraConditions = ServingInputs{
 var InfraClassification Classifier = ReasonClassifier{Suffixes: []ReasonSuffix{{"Failed", Failed}, {"WaitingForHuman", WaitingForHuman}}}
 var beforeInitialization Propagation = BeforeInitialized{Parent: InfraConditions.Initialized}
 var existingChildren Propagation = ExistingChildren{Parent: InfraConditions.Initialized, Child: InfraConditions.Initialized}
-var infraMessages Formatter = InfraMessages{MaxLines: 7, InlineChars: 80}
+var infraMessages Formatter = MultilineMessages{MaxLines: 7, InlineChars: 80}
 
 // Each flat value composes configured implementations of the domain interfaces.
 var InfraAvailability = Aggregation{
@@ -1694,7 +1721,7 @@ func (p InfraProfile) Evaluate(parent Object, children map[string]Object, local 
 
 The companion implementation includes stable ordering of named children, explicit nil handling, compatible reason selection, transition timestamps, and an opaque cause formatter. Internal helpers adapt getter access and stage intermediate Conditions; callers do not create an evaluation bundle.
 
-`BoundedMessages` demonstrates opaque cause rendering, bounded output, and UTF-8-safe shortening. Infra explicitly selects `InfraMessages`, an application-specific implementation of the existing Infra grammar in [legacy_messages.go](examples/infra/legacy_messages.go). The reference multiline tests run against that legacy implementation. It is not the proposed native codec and is never inferred for arbitrary foreign messages. Both implementations still materialize diagnostic detail; bounded working memory and large-fan-out performance remain implementation work.
+`MultilineMessages` and `BoundedMessages` are regular implementations of the root `Formatter` interface, with their [format contract](FORMATS.md) and implementations in [multiline.go](multiline.go) and [messages.go](messages.go). Infra selects `MultilineMessages` as configuration and contains no format implementation. Its [multiline tests](examples/infra/multiline_test.go) call the public format. The multiline format promotes messages that use its colon-and-indentation syntax; the opaque format does not interpret source text. Mixed-source provenance and escaping remain a separate extension. Both formats still materialize diagnostic detail; bounded working memory and large-fan-out performance remain implementation work.
 
 <details>
 <summary>Diagnostic, object-access, and metadata helper implementations</summary>
@@ -1734,6 +1761,63 @@ func sortedChildren(children map[string]Object) []namedObject {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	return result
+}
+
+// conditionOverlay stages new Conditions while forwarding metadata to the original object.
+type conditionOverlay struct {
+	Object
+	conditions []metav1.Condition
+}
+
+func (o *conditionOverlay) GetConditions() []metav1.Condition { return o.conditions }
+func (o *conditionOverlay) SetConditions(conditions ...metav1.Condition) bool {
+	changed := false
+	for _, condition := range conditions {
+		found := false
+		for i := range o.conditions {
+			if o.conditions[i].Type != condition.Type {
+				continue
+			}
+			found = true
+			if !reflect.DeepEqual(o.conditions[i], condition) {
+				o.conditions[i] = condition
+				changed = true
+			}
+			break
+		}
+		if !found {
+			o.conditions = append(o.conditions, condition)
+			changed = true
+		}
+	}
+	return changed
+}
+func stamp(parent Object, c metav1.Condition, now time.Time) metav1.Condition {
+	c.LastTransitionTime = metav1.NewTime(now)
+	if old, ok := Lookup(parent, c.Type); ok && old.Status == c.Status {
+		c.LastTransitionTime = old.LastTransitionTime
+	}
+	return c
+}
+
+// deleting reads already-supplied object metadata without querying Kubernetes.
+func isDeleting(object Object) bool {
+	timestamp := object.GetDeletionTimestamp()
+	return timestamp != nil && !timestamp.IsZero()
+}
+
+// isNilObject handles optional resources, including typed nil pointers in interface values.
+func isNilObject(object Object) bool {
+	if object == nil {
+		return true
+	}
+	value := reflect.ValueOf(object)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 func cause(c Contribution) Cause {
@@ -1806,64 +1890,7 @@ func childReason(children map[string]Object, group []Contribution, suffix string
 	return "Children" + suffix
 }
 
-// conditionOverlay stages new Conditions while forwarding metadata to the original object.
-type conditionOverlay struct {
-	Object
-	conditions []metav1.Condition
-}
-
-func (o *conditionOverlay) GetConditions() []metav1.Condition { return o.conditions }
-func (o *conditionOverlay) SetConditions(conditions ...metav1.Condition) bool {
-	changed := false
-	for _, condition := range conditions {
-		found := false
-		for i := range o.conditions {
-			if o.conditions[i].Type != condition.Type {
-				continue
-			}
-			found = true
-			if !reflect.DeepEqual(o.conditions[i], condition) {
-				o.conditions[i] = condition
-				changed = true
-			}
-			break
-		}
-		if !found {
-			o.conditions = append(o.conditions, condition)
-			changed = true
-		}
-	}
-	return changed
-}
-func stamp(parent Object, c metav1.Condition, now time.Time) metav1.Condition {
-	c.LastTransitionTime = metav1.NewTime(now)
-	if old, ok := Lookup(parent, c.Type); ok && old.Status == c.Status {
-		c.LastTransitionTime = old.LastTransitionTime
-	}
-	return c
-}
-
-// deleting reads already-supplied object metadata without querying Kubernetes.
-func isDeleting(object Object) bool {
-	timestamp := object.GetDeletionTimestamp()
-	return timestamp != nil && !timestamp.IsZero()
-}
-
-// isNilObject handles optional resources, including typed nil pointers in interface values.
-func isNilObject(object Object) bool {
-	if object == nil {
-		return true
-	}
-	value := reflect.ValueOf(object)
-	switch value.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return value.IsNil()
-	default:
-		return false
-	}
-}
-
-// BoundedMessages demonstrates opaque cause rendering; a native codec is a separate implementation.
+// BoundedMessages renders causes as opaque text with explicit omission notices.
 type BoundedMessages struct{ MaxLines, MaxBytes, InlineChars int }
 
 func (p BoundedMessages) Format(summary string, causes []Cause) string {
@@ -1928,7 +1955,7 @@ func (p BoundedMessages) limit(text string) string {
 
 The independent two-call composition check classifies `DependencyFailed` on the first input and `ChildrenFailed` on the second. The first returned Condition is supplied as a Condition of the next child resource. Replacing the original supplied input with a good Condition lets both outputs recover despite retained previous failures. Neither classifier reads messages.
 
-The general validity/freshness API, reusable adapter contracts, bounded working memory, and native/foreign codec remain open. The OpenShift and Crossplane examples below exercise concrete native adapters without making their API modules core dependencies. They do not require changing the resource-oriented call style.
+The general validity/freshness API, reusable adapter contracts, bounded working memory, and mixed-format provenance/escaping remain open. The OpenShift and Crossplane examples below exercise concrete native adapters without making their API modules core dependencies. They do not require changing the resource-oriented call style.
 
 ### OpenShift operator status example
 
@@ -2067,7 +2094,7 @@ The public Infrastructure behavior matrix is the self-contained conformance corp
 
 ## Implementation plan
 
-1. Review and refine the executable concept interfaces and Infrastructure example above. Finalize the general validity/freshness and adapter contracts, remove prototype-only compatibility leaks from the shared API, and validate against the reference integration suites. Keep orchestration in Go and settle the native format before publishing it.
+1. Review and refine the executable concept interfaces and Infrastructure example above. Finalize the general validity/freshness and adapter contracts, remove prototype-only compatibility leaks from the shared API, and validate against the reference integration suites. Keep orchestration in Go and settle format evolution and mixed-source boundaries before declaring stable wire compatibility.
 2. Refine the experimental root evaluator and bounded formatting, adding general validity/freshness, codec, and package boundary tests. Preserve the existing polarity, escalation, composition, and reference-profile tests.
 3. Retain the executable Infra, OpenShift operator, and Crossplane profiles as expressibility tests without resource-specific branches in the engine; keep Dynamo mappings in its integration layer.
 4. Integrate a representative native -> native condition promotion chain and a foreign-resource adapter with existing conditions and reasons. A DCD -> DGD -> DGDR chain is one possible Dynamo example, not a constraint on the library.
@@ -2103,7 +2130,7 @@ This misrepresents recoverable failures and introduces a parent lifecycle latch 
 ## Open decisions
 
 1. Finalize the concept interfaces and standard implementations after reviewing the executable Infrastructure example. Settle validity/freshness, adapters, bounded working memory, and placement of compatibility metadata. The shared root package and its three profiles remain experimental; the Infra corpus includes 44 original fixtures and all 117 ported reference cases.
-2. Finalize the native message grammar, reserved-header escaping, format evolution, and legacy fallback. The literal-block notation is a proposed encoding, not a committed wire contract.
+2. Finalize mixed-format source provenance, reserved-header escaping, format evolution, and fallback. The current homogeneous multiline format is documented in FORMATS.md; the literal-block extension below is proposed rather than a committed wire contract.
 3. Choose initial example and integration reason-classification/output-reason policies while preserving consumer expectations. Configure the Infrastructure profile's suffix conventions independently.
 4. Set the default diagnostic-detail size/depth limits and select performance acceptance thresholds after baseline measurements. Seven lines is a presentation default, not a latency guarantee.
 5. Decide whether any consuming integration needs new Conditions or different lifecycle/summary precedence. They are separate from adopting the mechanism.

@@ -78,11 +78,14 @@ func TestOutputMetadataPolicies(t *testing.T) {
 
 func TestPolarityAndRenderingDoNotChangeClassification(t *testing.T) {
 	for _, polarity := range []c.Polarity{c.TrueIsGood, c.FalseIsGood} {
-		for _, limit := range []int{1, 7} {
+		for _, format := range []c.Formatter{
+			c.BoundedMessages{MaxLines: 1}, c.BoundedMessages{MaxLines: 7},
+			c.MultilineMessages{MaxLines: 1}, c.MultilineMessages{MaxLines: 7},
+		} {
 			out := c.Outcome{State: c.State{Assessment: c.Bad, Escalation: c.Failed}, Reason: "ChildrenFailed", Summary: "dependency failed", Causes: []c.Cause{{Reference: "child", Message: "many\nlines\nof\ntext"}}}
 			r := rule(out)
 			r.Output.Polarity = polarity
-			r.Messages = c.BoundedMessages{MaxLines: limit}
+			r.Messages = format
 			parent := &object{}
 			_, err := c.Aggregate(parent, nil, c.Rules{Outputs: []c.Aggregation{r}})
 			if err != nil {

@@ -4,6 +4,8 @@
 package infra
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,14 +13,14 @@ import (
 
 func TestFormatAggregateMessage_ExampleA(t *testing.T) {
 	summary := []string{"Cluster is not available", "unavailable children: EKSAcceleratedCluster, and not synced: EKSManagementCluster"}
-	children := []ChildStatus{
+	children := []Cause{
 		{
-			Display: "EKSAcceleratedCluster",
-			Message: "something something, this could be\na multiline message too, one that\nis very long (SomeReason)",
+			Reference: "EKSAcceleratedCluster",
+			Message:   "something something, this could be\na multiline message too, one that\nis very long (SomeReason)",
 		},
 		{
-			Display: "EKSManagementCluster",
-			Message: "not synced (AnotherReason):\nsome more message that could be cut off because there is the colon in the line above.",
+			Reference: "EKSManagementCluster",
+			Message:   "not synced (AnotherReason):\nsome more message that could be cut off because there is the colon in the line above.",
 		},
 	}
 
@@ -29,20 +31,20 @@ func TestFormatAggregateMessage_ExampleA(t *testing.T) {
 		"  EKSManagementCluster: not synced (AnotherReason):\n" +
 		"    some more message that could be cut off because there is the colon in the line above."
 
-	actualFull := FormatAggregateMessage(summary, children, 0)
+	actualFull := formatMessage(summary, children, 0)
 	require.Equal(t, expectedFull, actualFull)
 
 	expectedInline := "Cluster is not available: unavailable children: EKSAcceleratedCluster, and not synced: EKSManagementCluster"
-	actualInline := FormatAggregateMessage(summary, children, 1)
+	actualInline := formatMessage(summary, children, 1)
 	require.Equal(t, expectedInline, actualInline)
 }
 
 func TestFormatAggregateMessage_ExampleB(t *testing.T) {
 	summary := []string{"Storage health degraded"}
-	children := []ChildStatus{
+	children := []Cause{
 		{
-			Display: "StorageCluster",
-			Message: "capacity low, investigating\nqueue length high\ndisks nearing wearout",
+			Reference: "StorageCluster",
+			Message:   "capacity low, investigating\nqueue length high\ndisks nearing wearout",
 		},
 	}
 
@@ -50,29 +52,29 @@ func TestFormatAggregateMessage_ExampleB(t *testing.T) {
 		"  StorageCluster: capacity low, investigating\n" +
 		"    queue length high\n" +
 		"    disks nearing wearout"
-	actualExpanded := FormatAggregateMessage(summary, children, 0)
+	actualExpanded := formatMessage(summary, children, 0)
 	require.Equal(t, expectedExpanded, actualExpanded)
 
 	expectedCondensed := "Storage health degraded:\n" +
 		"  StorageCluster: capacity low, investigating …"
-	actualCondensed := FormatAggregateMessage(summary, children, 2)
+	actualCondensed := formatMessage(summary, children, 2)
 	require.Equal(t, expectedCondensed, actualCondensed)
 }
 
 func TestFormatAggregateMessage_ExampleC(t *testing.T) {
 	summary := []string{"Cluster is not available", "children degraded"}
-	children := []ChildStatus{
+	children := []Cause{
 		{
-			Display: "StorageCluster",
-			Message: "rebuilding pool:\nDiskPoolA: waiting for replacement",
+			Reference: "StorageCluster",
+			Message:   "rebuilding pool:\nDiskPoolA: waiting for replacement",
 		},
 		{
-			Display: "NetworkCluster",
-			Message: "not synced:\nRouterA: pending reboot",
+			Reference: "NetworkCluster",
+			Message:   "not synced:\nRouterA: pending reboot",
 		},
 		{
-			Display: "ComputeCluster",
-			Message: "updating nodes:\nNodeGroupA: drained\nNodeGroupB: waiting",
+			Reference: "ComputeCluster",
+			Message:   "updating nodes:\nNodeGroupA: drained\nNodeGroupB: waiting",
 		},
 	}
 
@@ -84,7 +86,7 @@ func TestFormatAggregateMessage_ExampleC(t *testing.T) {
 		"  ComputeCluster: updating nodes:\n" +
 		"    NodeGroupA: drained\n" +
 		"    NodeGroupB: waiting"
-	actualExpanded := FormatAggregateMessage(summary, children, 8)
+	actualExpanded := formatMessage(summary, children, 8)
 	require.Equal(t, expectedExpanded, actualExpanded)
 
 	expectedCondensed := "Cluster is not available: children degraded:\n" +
@@ -93,40 +95,40 @@ func TestFormatAggregateMessage_ExampleC(t *testing.T) {
 		"  NetworkCluster: not synced:\n" +
 		"    RouterA: pending reboot\n" +
 		"  ComputeCluster: updating nodes"
-	actualCondensed := FormatAggregateMessage(summary, children, 7)
+	actualCondensed := formatMessage(summary, children, 7)
 	require.Equal(t, expectedCondensed, actualCondensed)
 }
 
 func TestFormatAggregateMessage_ExampleD(t *testing.T) {
 	summary := []string{"Root is unhealthy", "child cluster not available"}
-	children := []ChildStatus{
+	children := []Cause{
 		{
-			Display: "LitmusCluster",
-			Message: "waiting on bootstrap:\nWardenCluster: draining nodes (PendingInit)",
+			Reference: "LitmusCluster",
+			Message:   "waiting on bootstrap:\nWardenCluster: draining nodes (PendingInit)",
 		},
 	}
 
 	expectedExpanded := "Root is unhealthy: child cluster not available:\n" +
 		"  LitmusCluster: waiting on bootstrap:\n" +
 		"    WardenCluster: draining nodes (PendingInit)"
-	actualExpanded := FormatAggregateMessage(summary, children, 0)
+	actualExpanded := formatMessage(summary, children, 0)
 	require.Equal(t, expectedExpanded, actualExpanded)
 
 	expectedInline := "Root is unhealthy: child cluster not available: LitmusCluster: waiting on bootstrap: WardenCluster: draining nodes (PendingInit)"
-	actualInline := FormatAggregateMessage(summary, children, 1)
+	actualInline := formatMessage(summary, children, 1)
 	require.Equal(t, expectedInline, actualInline)
 }
 
 func TestFormatAggregateMessage_ExampleE(t *testing.T) {
 	summary := []string{"Level1 is unhealthy, children are broken"}
-	children := []ChildStatus{
+	children := []Cause{
 		{
-			Display: "Level2ObjectA",
-			Message: "children are broken:\nLevel3ObjectA: unhealthy (ReasonX)",
+			Reference: "Level2ObjectA",
+			Message:   "children are broken:\nLevel3ObjectA: unhealthy (ReasonX)",
 		},
 		{
-			Display: "Level2ObjectB",
-			Message: "something something (ReasonY)",
+			Reference: "Level2ObjectB",
+			Message:   "something something (ReasonY)",
 		},
 	}
 
@@ -134,17 +136,17 @@ func TestFormatAggregateMessage_ExampleE(t *testing.T) {
 		"  Level2ObjectA: children are broken:\n" +
 		"    Level3ObjectA: unhealthy (ReasonX)\n" +
 		"  Level2ObjectB: something something (ReasonY)"
-	actualExpanded := FormatAggregateMessage(summary, children, 0)
+	actualExpanded := formatMessage(summary, children, 0)
 	require.Equal(t, expectedExpanded, actualExpanded)
 
 	expectedThreeLines := "Level1 is unhealthy, children are broken:\n" +
 		"  Level2ObjectA: children are broken: Level3ObjectA: unhealthy (ReasonX)\n" +
 		"  Level2ObjectB: something something (ReasonY)"
-	actualThreeLines := FormatAggregateMessage(summary, children, 3)
+	actualThreeLines := formatMessage(summary, children, 3)
 	require.Equal(t, expectedThreeLines, actualThreeLines)
 
 	expectedInline := "Level1 is unhealthy, children are broken: Level2ObjectA, Level2ObjectB"
-	actualInline := FormatAggregateMessage(summary, children, 1)
+	actualInline := formatMessage(summary, children, 1)
 	require.Equal(t, expectedInline, actualInline)
 }
 
@@ -154,10 +156,10 @@ func TestFormatAggregateMessage_ExampleF(t *testing.T) {
 		"  Level3ZoneA: zone does not respond (PingTimeout)\n" +
 		"  Level3ZoneB: children unavailable:\n" +
 		"    Level4ZoneA: failed to apply child configuration (Invalid)"
-	children := []ChildStatus{
+	children := []Cause{
 		{
-			Display: "Level2Region",
-			Message: regionMessage,
+			Reference: "Level2Region",
+			Message:   regionMessage,
 		},
 	}
 
@@ -166,18 +168,18 @@ func TestFormatAggregateMessage_ExampleF(t *testing.T) {
 		"    Level3ZoneA: zone does not respond (PingTimeout)\n" +
 		"    Level3ZoneB: children unavailable:\n" +
 		"      Level4ZoneA: failed to apply child configuration (Invalid)"
-	actualExpanded := FormatAggregateMessage(summary, children, 0)
+	actualExpanded := formatMessage(summary, children, 0)
 	require.Equal(t, expectedExpanded, actualExpanded)
 
 	expectedFourLines := "Level1 routing degraded:\n" +
 		"  Level2Region: unavailable children: Level3ZoneA, and not synced: Level3ZoneB\n" +
 		"    Level3ZoneA: zone does not respond (PingTimeout)\n" +
 		"    Level3ZoneB: children unavailable: Level4ZoneA: failed to apply child configuration (Invalid)"
-	actualFourLines := FormatAggregateMessage(summary, children, 4)
+	actualFourLines := formatMessage(summary, children, 4)
 	require.Equal(t, expectedFourLines, actualFourLines)
 
 	expectedInline := "Level1 routing degraded: Level2Region: unavailable children: Level3ZoneA, and not synced: Level3ZoneB"
-	actualInline := FormatAggregateMessage(summary, children, 1)
+	actualInline := formatMessage(summary, children, 1)
 	require.Equal(t, expectedInline, actualInline)
 }
 
@@ -269,8 +271,17 @@ func TestInlineMessage(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			actual := InlineMessage(tc.msg, tc.maxChars)
+			limit := tc.maxChars
+			if limit == 0 {
+				limit = -1
+			}
+			actual := (MultilineMessages{InlineChars: limit}).Inline(metav1.Condition{Message: tc.msg})
 			require.Equal(t, tc.expected, actual)
 		})
 	}
+}
+
+// formatMessage supplies the reference fixtures' summary heads to the public Formatter contract.
+func formatMessage(heads []string, causes []Cause, maxLines int) string {
+	return (MultilineMessages{MaxLines: maxLines}).Format(strings.Join(heads, ": "), causes)
 }

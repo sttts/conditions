@@ -70,10 +70,11 @@ See [DESIGN.md](DESIGN.md) for the full API, worked configurations, composition 
 
 ## Examples
 
-Each example contains rules, representation adapters, executable calls, status YAML, and tests.
+Each example contains rules, executable calls, and tests. The framework examples also include representation adapters and status YAML.
 
 | Example | What it demonstrates |
 | --- | --- |
+| [Lifecycle](examples/infra) | Initialization-aware availability, degradation, updates, deletion, escalation, and multiline diagnostics, with conformance fixtures. |
 | [OpenShift operator](examples/openshift) | Controller assertions in **operator status**, suffix unions, independent Available/Progressing/Degraded/Upgradeable outputs, and native `ClusterOperator` Conditions. |
 | [Crossplane](examples/crossplane) | Native Crossplane Conditions, child readiness, and independent local reconciliation status. |
 

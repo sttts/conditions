@@ -12,6 +12,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	c "github.com/sttts/conditions"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -44,14 +45,19 @@ func (o ClusterOperator) GetConditions() []metav1.Condition {
 	return result
 }
 
-// SetConditions replaces only the native Conditions slice, retaining the other status fields.
-func (o ClusterOperator) SetConditions(values []metav1.Condition) {
-	o.Status.Conditions = make([]configv1.ClusterOperatorStatusCondition, 0, len(values))
+// SetConditions reports changes after converting the desired slice to the native representation.
+func (o ClusterOperator) SetConditions(values []metav1.Condition) bool {
+	desired := make([]configv1.ClusterOperatorStatusCondition, 0, len(values))
 	for _, value := range values {
-		o.Status.Conditions = append(o.Status.Conditions, configv1.ClusterOperatorStatusCondition{
+		desired = append(desired, configv1.ClusterOperatorStatusCondition{
 			Type: configv1.ClusterStatusConditionType(value.Type), Status: configv1.ConditionStatus(value.Status),
 			Reason: value.Reason, Message: value.Message, LastTransitionTime: value.LastTransitionTime})
 	}
+	if equality.Semantic.DeepEqual(o.Status.Conditions, desired) {
+		return false
+	}
+	o.Status.Conditions = desired
+	return true
 }
 
 // OperatorConditions selects every matching controller assertion from native operator status.

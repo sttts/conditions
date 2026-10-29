@@ -20,12 +20,12 @@ The main entry point applies Conditions to the supplied parent in memory:
 changed, err := conditions.Aggregate(parent, children, rules, localConditions...)
 ```
 
-- `parent` implements `conditions.Conditioned`: standard metadata getters, `GetConditions() []metav1.Condition`, and `SetConditions([]metav1.Condition)`.
+- `parent` implements `conditions.Conditioned`: standard metadata getters, `GetConditions() []metav1.Condition`, and `SetConditions([]metav1.Condition) bool`.
 - `children` is a `map[string]conditions.Object` of resources selected by the caller. Map keys identify sources in diagnostics.
 - `rules` is a `conditions.Rules` value describing the outputs and their policies.
 - `localConditions` contains the caller's local `metav1.Condition` assertions.
 
-`changed` reports whether the parent's Conditions changed. The evaluator merges results with existing Conditions and calls the setter only when needed. It performs no API-server writes.
+The evaluator merges results with existing Conditions, then calls the native setter with the complete desired slice. The setter reports whether the stored Conditions changed; `Aggregate` returns that `bool` directly. Setters must accept identical inputs and report `false` for a no-op. Evaluation errors leave the setter uncalled. The package performs no API-server writes.
 
 For a pure evaluation, use the same arguments with `Evaluate`:
 
@@ -34,6 +34,19 @@ desiredConditions, err := conditions.Evaluate(parent, children, rules, localCond
 ```
 
 Resources with another Condition representation can use an adapter. The examples include adapters for native OpenShift and Crossplane types.
+
+### Setters without a change flag
+
+For objects with `SetConditions([]metav1.Condition)` returning nothing, such as Cluster API resources, wrap the parent:
+
+```go
+changed, err := conditions.Aggregate(
+    conditions.WithChangeDetection(parent),
+    children, rules, localConditions...,
+)
+```
+
+`WithChangeDetection` copies the current Conditions before invoking the wrapped setter and compares them with the stored Conditions afterward using Kubernetes semantic equality. This handles setters that update a slice in place or normalize their input. It tracks changes to Conditions only. Native boolean setters provide their own change detection.
 
 ## Rules and semantics
 

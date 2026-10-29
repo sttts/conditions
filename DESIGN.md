@@ -29,7 +29,7 @@ The Infrastructure profile below is the worked expressibility example. It includ
 
 The initial module path is `github.com/sttts/conditions`, with public package `conditions` at the module root. Keep exported APIs independent of repository ownership and application names. The package follows established Kubernetes API and Go conventions; repository-wide contribution files should use the [Kubernetes template project](https://github.com/kubernetes/kubernetes-template-project) as their baseline while preserving existing attribution and license notices.
 
-Use `metav1.Condition` and its standard fields directly. Adopt the structural `GetConditions() []metav1.Condition` and `SetConditions([]metav1.Condition)` interfaces used by [Cluster API's Getter](https://github.com/kubernetes-sigs/cluster-api/blob/main/util/conditions/getter.go) and [Setter](https://github.com/kubernetes-sigs/cluster-api/blob/main/util/conditions/setter.go). The setter replaces the supplied slice; it is not responsible for merging, transition timestamps, change detection, or persistence. The library computes the returned `changed` flag. Existing variadic or boolean-returning setters use an adapter in their integration package.
+Use `metav1.Condition` and its standard fields directly. The native accessor contract is `GetConditions() []metav1.Condition` with `SetConditions([]metav1.Condition) bool`. The setter applies the complete desired slice and reports whether the stored Conditions changed. The evaluator owns merging and transition timestamps; `Aggregate` returns the setter's change flag directly. [Cluster API's Getter](https://github.com/kubernetes-sigs/cluster-api/blob/main/util/conditions/getter.go) has the same read shape, while its [Setter](https://github.com/kubernetes-sigs/cluster-api/blob/main/util/conditions/setter.go) returns nothing. `WithChangeDetection` adapts that setter shape without importing Cluster API. Other Condition representations use integration adapters.
 
 Follow [Kubernetes Condition conventions](https://github.com/kubernetes/community/blob/main/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties) and the behavior of [API machinery's Condition helpers](https://github.com/kubernetes/apimachinery/blob/master/pkg/api/meta/conditions.go): Condition type identifies an entry, status is `True`, `False`, or `Unknown`, and `lastTransitionTime` changes with status. Preserve reasons and observed-generation contracts explicitly. Canonicalize timestamps to their API serialization precision before change comparison. Omission and staleness remain distinct inputs to profile policy; an absent Condition must not silently assert success.
 
@@ -51,7 +51,7 @@ conditions/
   DESIGN.md
 ```
 
-This is the target production layout. The experimental evaluator currently lives in `conditions.go`; all three examples are separate modules consuming that same root package. Infra retains its reference conformance tests. Infra vocabulary and compatibility behavior stay in examples or consuming applications. Framework-specific adapters remain optional, and neither clients nor application API modules become dependencies of basic aggregation.
+This is the target production layout. The experimental evaluator currently lives in `conditions.go`, with the plain-setter adapter in `adapters.go`; all three examples are separate modules consuming that same root package. Infra retains its reference conformance tests. Infra vocabulary and compatibility behavior stay in examples or consuming applications. Framework-specific adapters remain optional, and neither clients nor application API modules become dependencies of basic aggregation.
 
 Use ordinary Go interfaces for real Conditions concepts, Go values for configuration, and Go implementations for exceptional behavior. Document exported symbols and provide external-package examples and tests that use only the public API. Keep development versions pre-v1 until semantics, metadata behavior, and the native format are settled; publish compatibility expectations before v1. Build and test with the supported Go/API-machinery versions, formatting, static checks, and race tests where appropriate. The existing repository Apache-2.0 license applies; retained source notices remain intact.
 
@@ -173,7 +173,7 @@ The generic entry point itself has the Infra call shape with one additional argu
 
 `Rules.Outputs` is an ordered flat list of output definitions for one boundary. `LocalFirst` optionally gives local-only and bad/unknown local bases precedence before deferred child aggregation. Defaults and local derivations are attached directly to their output rules. These are domain configuration values; exceptional derivation and local-condition behavior use the declared Go interfaces. The evaluator does not infer resource edges or schedule an ownership graph.
 
-`Getter` uses the common `GetConditions() []metav1.Condition` convention. `Object` adds only standard Kubernetes metadata getters, without `client.Object` or scheme registration. `Setter` matches the slice-based Kubernetes ecosystem accessor; `Conditioned` combines it with object metadata. The library computes the change flag independently of the setter. Other representations use an accessor adapter.
+`Getter` uses the common `GetConditions() []metav1.Condition` convention. `Object` adds only standard Kubernetes metadata getters, without `client.Object` or scheme registration. `Setter` uses a slice-based setter returning `bool`; `Conditioned` combines it with object metadata. The native setter owns change detection and must report `false` for an unchanged stored slice. `PlainSetter` describes objects with metadata and a setter returning nothing; `WithChangeDetection` wraps them as `Conditioned`. Other representations use an accessor adapter.
 
 | Concept | Contract | Implementations exercised below |
 | --- | --- | --- |
@@ -209,16 +209,22 @@ type Object interface {
 	GetDeletionTimestamp() *metav1.Time
 }
 
-// Setter is the slice-based Conditions setter used by Kubernetes ecosystem APIs.
+// Setter reports whether applying the desired slice changed the stored Conditions.
 type Setter interface {
 	Getter
-	SetConditions([]metav1.Condition)
+	SetConditions([]metav1.Condition) bool
 }
 
 // Conditioned combines object access and in-memory assignment without requiring a Kubernetes client.
 type Conditioned interface {
 	Object
 	Setter
+}
+
+// PlainSetter combines object access with a setter that does not report changes.
+type PlainSetter interface {
+	Object
+	SetConditions([]metav1.Condition)
 }
 
 // ConditionType names a Condition and explicitly declares its source or output polarity.
@@ -357,6 +363,9 @@ func Aggregate(parent Conditioned, children map[string]Object, rules Rules, loca
 // Evaluate returns desired Conditions through the same generic call without modifying objects.
 func Evaluate(parent Object, children map[string]Object, rules Rules, local ...metav1.Condition) ([]metav1.Condition, error)
 
+// WithChangeDetection adapts a plain setter to the native change-reporting contract.
+func WithChangeDetection(object PlainSetter) Conditioned
+
 // Lookup distinguishes missing Conditions through the ordinary GetConditions accessor.
 func Lookup(object Getter, typ string) (metav1.Condition, bool)
 
@@ -367,11 +376,44 @@ func (c ConditionType) Assessment(value metav1.Condition) Assessment
 func (a Aggregation) Evaluate(parent Object, children map[string]Object, base metav1.Condition, now time.Time) (*metav1.Condition, error)
 ```
 
-The generic `Aggregate` stages all evaluations, compares desired and current Conditions itself, and calls the slice-based setter only when they differ. Invalid configuration returns an error without partially changing that parent. `Evaluate` returns the desired Conditions without requiring a setter. The original Infra function returns only `changed`; this proposed API also returns configuration errors. Neither path performs API-server writes.
+The generic `Aggregate` stages all evaluations, then calls the native setter once and returns its `bool` without a separate comparison. A successful evaluation may supply an unchanged slice; the setter must accept that input and report a no-op. The flag describes changes to stored Conditions, including reason, message, and metadata changes with unchanged status, according to the resource's representation. Invalid configuration returns an error before calling the setter. `Evaluate` returns the desired Conditions without requiring a setter. The original Infra function returns only `changed`; this proposed API also returns configuration errors. Neither path performs API-server writes.
 
 A child's map key supplies a diagnostic alias and a compatible reason prefix; it never selects policy. Nil children, including typed nil pointers, are skipped as inputs. Original map cardinality can still participate in an explicitly compatible reason implementation.
 
 Compatibility annotations in `Contribution` remain prototype choices. `GenerationPolicy` explicitly distinguishes parent generation, Infra-compatible copied/derived generations, and representations with no per-condition generation. General validity/freshness, native/foreign constructors, and the native codec still require their separate contracts. None has implicit Infra Condition names.
+
+### Setter adapter example
+
+Existing objects with a plain setter, including current Cluster API objects, retain their method signature. A caller wraps the parent at the aggregation boundary:
+
+```go
+changed, err := conditions.Aggregate(
+    conditions.WithChangeDetection(parent),
+    children, rules, localConditions...,
+)
+```
+
+The adapter in [adapters.go](adapters.go) copies Conditions before the setter runs and compares the actual stored Conditions afterward with `equality.Semantic.DeepEqual`. The copy preserves the previous values even when the setter changes the same backing array. Comparing the post-set state accounts for normalization or discarded fields. Only Conditions participate in the change flag; unrelated metadata or status remains the caller's responsibility. Equivalent empty slices and equal transition instants follow API machinery's semantic equality. Native boolean setters provide their own change detection.
+
+```go
+// WithChangeDetection adapts a plain setter to the native change-reporting contract.
+func WithChangeDetection(object PlainSetter) Conditioned {
+	if isNilObject(object) {
+		return nil
+	}
+	return changeTracking{PlainSetter: object}
+}
+
+type changeTracking struct{ PlainSetter }
+
+func (o changeTracking) SetConditions(values []metav1.Condition) bool {
+	before := slices.Clone(o.GetConditions())
+	o.PlainSetter.SetConditions(values)
+	return !equality.Semantic.DeepEqual(before, o.GetConditions())
+}
+```
+
+[Adapter tests](adapters_test.go) exercise in-place writes, normalized no-ops, API equality, metadata forwarding, idempotence, nil parents, and evaluation errors. A native-setter test verifies that `Aggregate` honors the boolean result even when desired input differs from stored Conditions before normalization.
 
 ### Design guidelines
 
@@ -738,8 +780,12 @@ type exampleResource struct {
 type exampleStatus struct{ Conditions []metav1.Condition }
 
 func (r *exampleResource) GetConditions() []metav1.Condition { return r.Status.Conditions }
-func (r *exampleResource) SetConditions(conditions []metav1.Condition) {
+func (r *exampleResource) SetConditions(conditions []metav1.Condition) bool {
+	if reflect.DeepEqual(r.Status.Conditions, conditions) {
+		return false
+	}
 	r.Status.Conditions = conditions
+	return true
 }
 
 // setConditions only prepares or updates the example API objects' supplied observations.
@@ -747,10 +793,33 @@ func setConditions(resource Setter, conditions ...metav1.Condition) bool {
 	current := conditionOverlay{conditions: append([]metav1.Condition(nil), resource.GetConditions()...)}
 	changed := current.SetConditions(conditions...)
 	if changed {
-		resource.SetConditions(current.conditions)
+		return resource.SetConditions(current.conditions)
 	}
 	return changed
 }
+
+// conditionOverlay is only the reference fixture's slice merger.
+type conditionOverlay struct{ conditions []metav1.Condition }
+
+func (o *conditionOverlay) SetConditions(conditions ...metav1.Condition) bool {
+	before := append([]metav1.Condition(nil), o.conditions...)
+	for _, condition := range conditions {
+		index := -1
+		for i := range o.conditions {
+			if o.conditions[i].Type == condition.Type {
+				index = i
+				break
+			}
+		}
+		if index < 0 {
+			o.conditions = append(o.conditions, condition)
+		} else {
+			o.conditions[index] = condition
+		}
+	}
+	return !reflect.DeepEqual(before, o.conditions)
+}
+
 ```
 
 </details>
@@ -798,11 +867,7 @@ func Aggregate(parent Conditioned, children map[string]Object, rules Rules, loca
 	if err != nil {
 		return false, err
 	}
-	if reflect.DeepEqual(parent.GetConditions(), desired) {
-		return false, nil
-	}
-	parent.SetConditions(desired)
-	return true, nil
+	return parent.SetConditions(desired), nil
 }
 
 // Evaluate computes all desired Conditions through the same generic resource-oriented call.
@@ -1881,11 +1946,11 @@ changed, err := c.Aggregate(
 )
 ```
 
-The native schemas have no per-condition observed generation. Their adapters preserve that distinction, with `NoObservedGeneration` selected explicitly for outputs. Existing unrelated status fields and Conditions remain owned by their caller. [Executable tests](examples/openshift/openshift_test.go) cover union semantics, inertia, native metadata, recovery, and rejection of operand Conditions as operator input. The [README](examples/openshift/README.md) contains complete status YAML and the scope relative to the full upstream StatusSyncer.
+The native schemas have no per-condition observed generation. Their adapters preserve that distinction, with `NoObservedGeneration` selected explicitly for outputs. The output setter compares converted native Conditions and reports its `bool`; discarded unsupported fields do not imply a stored change. Existing unrelated status fields and Conditions remain owned by their caller. [Executable tests](examples/openshift/openshift_test.go) cover union semantics, inertia, native metadata, recovery, and rejection of operand Conditions as operator input. The [README](examples/openshift/README.md) contains complete status YAML and the scope relative to the full upstream StatusSyncer.
 
 ### Crossplane Conditions example
 
-The [Crossplane profile](examples/crossplane) uses the actual `ConditionedStatus`, Condition type, and constructors from `crossplane-runtime/v2` v2.0.0. Its adapter preserves every native Condition field while exposing the root package’s slice-based accessors. Upstream API modules remain dependencies of the example alone.
+The [Crossplane profile](examples/crossplane) uses the actual `ConditionedStatus`, Condition type, and constructors from `crossplane-runtime/v2` v2.0.0. Its adapter preserves every native Condition field while exposing the root package’s getter and boolean-returning setter. It compares the converted native representation before assignment, so the reported flag reflects stored status. Upstream API modules remain dependencies of the example alone.
 
 This example chooses to roll up child Ready into parent Ready while keeping the parent’s Synced assertion local. Ready False for Creating, Deleting, or Unavailable is ordinary bad state, not implicit failure escalation. Missing readiness is Unknown. A supplied local bad/unknown Ready base keeps precedence; otherwise the declared good base is reduced with child readiness. Configured output reasons are Available, Creating, and ReadinessUnknown.
 

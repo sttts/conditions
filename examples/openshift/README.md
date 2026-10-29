@@ -117,6 +117,8 @@ status:
 
 Other native ClusterOperator status fields and unowned Condition types are retained. This demonstrates the four unions; it does not replace the full StatusSyncer, its management-state handling, versions/relatedObjects logic, or controller-specific inertia configuration.
 
+The output adapter implements `SetConditions([]metav1.Condition) bool`. It compares the converted native Conditions before assignment and reports changes to stored status. Differences in fields absent from the native schema, such as per-condition observed generation, do not produce a change flag.
+
 ## Tests
 
 ```sh

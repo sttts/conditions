@@ -60,10 +60,10 @@ type Object interface {
 	GetDeletionTimestamp() *metav1.Time
 }
 
-// Setter is the slice-based Conditions setter used by Kubernetes ecosystem APIs.
+// Setter reports whether applying the desired slice changed the stored Conditions.
 type Setter interface {
 	Getter
-	SetConditions([]metav1.Condition)
+	SetConditions([]metav1.Condition) bool
 }
 
 // Conditioned combines object access and in-memory assignment without requiring a Kubernetes client.
@@ -289,11 +289,7 @@ func Aggregate(parent Conditioned, children map[string]Object, rules Rules, loca
 	if err != nil {
 		return false, err
 	}
-	if reflect.DeepEqual(parent.GetConditions(), desired) {
-		return false, nil
-	}
-	parent.SetConditions(desired)
-	return true, nil
+	return parent.SetConditions(desired), nil
 }
 
 // Evaluate computes all desired Conditions through the same generic resource-oriented call.

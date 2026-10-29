@@ -170,6 +170,22 @@ func TestOperatorProjectionAndRecovery(t *testing.T) {
 	}
 }
 
+func TestSetterReportsNativeChanges(t *testing.T) {
+	parent := ClusterOperator{&configv1.ClusterOperator{}}
+	initial := []metav1.Condition{{Type: "Available", Status: metav1.ConditionTrue, Reason: "AsExpected"}}
+	if !parent.SetConditions(initial) {
+		t.Fatal("did not report adding a native Condition")
+	}
+	initial[0].ObservedGeneration = 42
+	if parent.SetConditions(initial) {
+		t.Fatal("reported a change for a field absent from the native schema")
+	}
+	initial[0].Message = "updated diagnostic"
+	if !parent.SetConditions(initial) || parent.Status.Conditions[0].Message != "updated diagnostic" {
+		t.Fatal("missed a native message change with unchanged status")
+	}
+}
+
 // componentObject deliberately resembles an operand but is not native operator status.
 type componentObject struct{ metav1.ObjectMeta }
 

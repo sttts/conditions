@@ -9,6 +9,7 @@ import (
 	"time"
 
 	c "github.com/sttts/conditions"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -18,8 +19,15 @@ type object struct {
 	sets       int
 }
 
-func (o *object) GetConditions() []metav1.Condition       { return o.conditions }
-func (o *object) SetConditions(values []metav1.Condition) { o.conditions = values; o.sets++ }
+func (o *object) GetConditions() []metav1.Condition { return o.conditions }
+func (o *object) SetConditions(values []metav1.Condition) bool {
+	o.sets++
+	if equality.Semantic.DeepEqual(o.conditions, values) {
+		return false
+	}
+	o.conditions = values
+	return true
+}
 
 type fixedOutcome struct{ outcome c.Outcome }
 
@@ -61,7 +69,7 @@ func TestOutputMetadataPolicies(t *testing.T) {
 				t.Fatalf("incorrect metadata: %#v", value)
 			}
 			rules.Now = func() time.Time { return epoch.Add(time.Hour) }
-			if changed, err = c.Aggregate(parent, nil, rules); err != nil || changed || parent.sets != 1 {
+			if changed, err = c.Aggregate(parent, nil, rules); err != nil || changed || parent.sets != 2 {
 				t.Fatalf("unstable metadata: %v, %v, sets=%d", changed, err, parent.sets)
 			}
 		})

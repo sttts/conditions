@@ -80,8 +80,12 @@ type exampleResource struct {
 type exampleStatus struct{ Conditions []metav1.Condition }
 
 func (r *exampleResource) GetConditions() []metav1.Condition { return r.Status.Conditions }
-func (r *exampleResource) SetConditions(conditions []metav1.Condition) {
+func (r *exampleResource) SetConditions(conditions []metav1.Condition) bool {
+	if reflect.DeepEqual(r.Status.Conditions, conditions) {
+		return false
+	}
 	r.Status.Conditions = conditions
+	return true
 }
 
 // setConditions only prepares or updates the example API objects' supplied observations.
@@ -89,7 +93,7 @@ func setConditions(resource Setter, conditions ...metav1.Condition) bool {
 	current := conditionOverlay{conditions: append([]metav1.Condition(nil), resource.GetConditions()...)}
 	changed := current.SetConditions(conditions...)
 	if changed {
-		resource.SetConditions(current.conditions)
+		return resource.SetConditions(current.conditions)
 	}
 	return changed
 }

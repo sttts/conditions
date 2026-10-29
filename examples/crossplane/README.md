@@ -25,7 +25,7 @@ This is a chosen aggregation policy over native Crossplane assertions, not a cla
 
 ## Adapter and invocation
 
-Crossplane has a variadic `SetConditions(...Condition)` and a single-type `GetCondition` accessor. Its native Condition type differs from `metav1.Condition`. `Adapter` converts type, status, reason, message, transition time, and observed generation without loss. Its slice setter assigns the desired result after the generic core has merged Conditions and computed transitions/change detection. Other Condition types are preserved by the core.
+Crossplane has a variadic `SetConditions(...Condition)` and a single-type `GetCondition` accessor. Its native Condition type differs from `metav1.Condition`. `Adapter` converts type, status, reason, message, transition time, and observed generation without loss. Its slice setter returns `bool` by comparing the converted native Conditions with stored status before assignment. The core merges Conditions and computes transition times; the adapter reports changes to the actual native representation. Other Condition types are preserved by the core.
 
 `Resource` is a small example CRD fixture embedding standard ObjectMeta and the real Crossplane `ConditionedStatus`, not a new input bundle required by the library. A consuming controller can bind the same adapter logic to its actual resource type.
 

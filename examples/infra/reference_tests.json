@@ -75,7 +75,8 @@
     "Use the new generic Aggregate(parent, children, rules, local...) entry point.",
     "Replace the mock internal URL consistently in input and expected output with example.invalid.",
     "Select the legacy Infra formatter explicitly through Formatter; generic opaque rendering is unchanged.",
-    "Import the shared root evaluator through aliases; the Infra profile no longer contains a private evaluator copy."
+    "Import the shared root evaluator through aliases; the Infra profile no longer contains a private evaluator copy.",
+    "Use boolean-returning native setters and let Aggregate return the setter change flag directly."
   ],
   "scope": "All cases from aggregate_test.go and multiline_test.go. Legacy producer and wrapper/unstructured-adapter APIs are not implemented by this example.",
   "privatePackageExecuted": false,
@@ -93,7 +94,7 @@
     },
     {
       "path": "infra_test.go",
-      "sha256": "19ca4931ec0bd017a4122cb4e67174e398fa292a73479d2575c4f266946a8fde"
+      "sha256": "657fb7886fe83191566541800a08cc2bdfe4d886609d09ec347925758f404ba1"
     },
     {
       "path": "legacy_messages.go",
@@ -118,6 +119,6 @@
   ],
   "sharedImplementation": {
     "path": "../../conditions.go",
-    "sha256": "c80d9be2779f1d82990a22b7ae6bd1ce5e5f78cb4e5c6b18531a73eab59eb395"
+    "sha256": "f568090260bea0ea0c208ada3757bdc4198b0f77f8cd87692cf3659d68247bf9"
   }
 }

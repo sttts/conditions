@@ -154,9 +154,16 @@ func TestAdapterRoundTripAndOwnership(t *testing.T) {
 	if object.Status.Conditions[0].Message != native.Message {
 		t.Fatal("getter exposed a mutable native slice")
 	}
-	object.SetConditions([]metav1.Condition{ToCondition(native)})
+	if object.SetConditions([]metav1.Condition{ToCondition(native)}) {
+		t.Fatal("reported a change for identical native Conditions")
+	}
 	if !reflect.DeepEqual(object.Status.Conditions, []xpv1.Condition{native}) {
 		t.Fatalf("lossy write adapter: %#v", object.Status)
+	}
+	updated := ToCondition(native)
+	updated.ObservedGeneration++
+	if !object.SetConditions([]metav1.Condition{updated}) || object.Status.Conditions[0].ObservedGeneration != updated.ObservedGeneration {
+		t.Fatal("missed a native generation change with unchanged status")
 	}
 }
 

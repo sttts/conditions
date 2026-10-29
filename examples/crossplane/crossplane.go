@@ -8,6 +8,7 @@ import (
 	xpv1 "github.com/crossplane/crossplane-runtime/v2/apis/common/v1"
 	c "github.com/sttts/conditions"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -29,15 +30,19 @@ func (o Adapter) GetConditions() []metav1.Condition {
 	return result
 }
 
-// SetConditions stores the complete desired slice without recomputing timestamps or generations.
-func (o Adapter) SetConditions(values []metav1.Condition) {
-	// The core already owns change detection and transition times; assign its complete desired slice.
-	o.Status.Conditions = make([]xpv1.Condition, 0, len(values))
+// SetConditions reports native changes without recomputing timestamps or generations.
+func (o Adapter) SetConditions(values []metav1.Condition) bool {
+	desired := make([]xpv1.Condition, 0, len(values))
 	for _, value := range values {
-		o.Status.Conditions = append(o.Status.Conditions, xpv1.Condition{Type: xpv1.ConditionType(value.Type),
+		desired = append(desired, xpv1.Condition{Type: xpv1.ConditionType(value.Type),
 			Status: corev1.ConditionStatus(value.Status), Reason: xpv1.ConditionReason(value.Reason),
 			Message: value.Message, LastTransitionTime: value.LastTransitionTime, ObservedGeneration: value.ObservedGeneration})
 	}
+	if equality.Semantic.DeepEqual(o.Status.Conditions, desired) {
+		return false
+	}
+	o.Status.Conditions = desired
+	return true
 }
 
 // ToCondition converts an existing local assertion without reclassifying it.

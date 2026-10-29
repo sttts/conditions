@@ -2054,10 +2054,10 @@
     "nativeCodecSuiteExecuted": false,
     "goExample": {
       "date": "2026-10-29",
-      "source": "model.go",
-      "checks": "model_test.go",
-      "sourceSHA256": "619c3ef79b5dd27d633587a06683314de097557e148b62fd699e8b2688e35a70",
-      "checksSHA256": "926ba6d044b4953536866dd88a41b2df9003b605f33eb13921dc22b6239fd089",
+      "source": "infra.go",
+      "checks": "infra_test.go",
+      "sourceSHA256": "49418c3dcabaa94d242747d49068561e911d638ac8b8b91b19b6e9c03a6e7f5e",
+      "checksSHA256": "083ea649c5bb93d234a78dcef2a48a48d7bcb39f0a8cf7ab9b9ba00b8ce914e4",
       "method": "isolated Go module; go test ./...",
       "goVersion": "go1.25.5 darwin/arm64",
       "apimachineryVersion": "v0.34.2",
@@ -2080,7 +2080,15 @@
       "nativeCodecSuiteExecuted": false,
       "scaleBenchmarksExecuted": false,
       "genericCall": "Aggregate(parent, children, rules, localConditions...)",
-      "module": "github.com/sttts/conditions/design/infra"
+      "module": "github.com/sttts/conditions/examples/infra"
+    },
+    "referenceConformance": {
+      "manifest": "reference_tests.json",
+      "portedCases": 117,
+      "result": "pass",
+      "privatePackageExecuted": false,
+      "command": "go test -race ./...",
+      "skippedCases": 0
     }
   },
   "role": "behavior corpus for the domain-interface design; no interpreter configuration is required"

@@ -49,7 +49,7 @@ conditions/
   DESIGN.md
 ```
 
-This is the target package layout, not a claim that the production package exists. The current executable model lives in `design/infra` as a separate module. Infra vocabulary and compatibility behavior stay in examples or consuming applications. Framework-specific adapters remain optional, and neither clients nor application API modules become dependencies of basic aggregation.
+This is the target package layout, not a claim that the production package exists. The current executable example lives in `examples/infra` as a separate module, together with its reference conformance tests. Infra vocabulary and compatibility behavior stay in examples or consuming applications. Framework-specific adapters remain optional, and neither clients nor application API modules become dependencies of basic aggregation.
 
 Use ordinary Go interfaces for real Conditions concepts, Go values for configuration, and Go implementations for exceptional behavior. Document exported symbols and provide external-package examples and tests that use only the public API. Keep development versions pre-v1 until semantics, metadata behavior, and the native format are settled; publish compatibility expectations before v1. Build and test with the supported Go/API-machinery versions, formatting, static checks, and race tests where appropriate. The existing repository Apache-2.0 license applies; retained source notices remain intact.
 
@@ -523,9 +523,9 @@ Message generation must support large fan-out. Count all relevant contributions,
 
 Infra is the canonical worked example for expressibility. Its call style passes the actual parent object and a named child map, followed by already-computed local Conditions. The generic API preserves this shape with the rules as one additional argument; an optional application wrapper binds those rules.
 
-[The public fixture corpus](design/infra/fixtures.json) contains 27 aggregation cases and 17 human-summary cases. The [executable API model](design/infra/model.go) and [checks](design/infra/model_test.go) exercise all 44 cases. The 27 aggregation cases run through both explicit single-output fixture steps and generic `Aggregate(..., InfraRules, ...)`, including repeated-call change reporting and comparison with the injection-only wrapper. Additional tests cover pure evaluation, error atomicity, optional children, resources without sync Conditions, both output polarities, two-call composition/recovery, and an unrelated rule set.
+[The public fixture corpus](examples/infra/fixtures.json) contains 27 aggregation cases and 17 human-summary cases. The [executable API model](examples/infra/infra.go) and [checks](examples/infra/infra_test.go) exercise all 44 cases. The 27 aggregation cases run through both explicit single-output fixture steps and generic `Aggregate(..., InfraRules, ...)`, including repeated-call change reporting and comparison with the injection-only wrapper. Additional tests cover pure evaluation, error atomicity, optional children, resources without sync Conditions, both output polarities, two-call composition/recovery, and an unrelated rule set. The example also runs all 117 cases from the reference aggregation and multiline suites; see [source provenance and scope](examples/infra/reference_tests.json).
 
-These checks are the public model's current evidence. They do not establish exhaustive equivalence with a consuming implementation, native-message conformance, or scale. Those remain separate validation gates. Reading or running the example requires no private repository, client, or application API module.
+The adapted reference suites check 74 aggregation cases, 16 local-condition cases, 10 literal aggregate-message cases, the multiline examples A-F, and 11 inline cases. Aggregate cases also check the original change flag, metadata, and repeated-call idempotence. Reading or running these tests requires no private repository, client, or application API module. They do not constitute execution of the private package or prove the still-undecided new native format or scale.
 
 The example retains compatibility details deliberately: `FailedChecks` does not end in `Failed`; an unknown child can enter the ordinary false branch; ignored nil map entries can affect singular/plural reason selection; and failed availability can outrank an ordinary sync error on the same child. Runtime aliases affect compatible diagnostics and reasons, not configured policy selection.
 
@@ -562,7 +562,7 @@ var InfraConditions = ServingInputs{
 var InfraClassification Classifier = ReasonClassifier{Suffixes: []ReasonSuffix{{"Failed", Failed}, {"WaitingForHuman", WaitingForHuman}}}
 var beforeInitialization Propagation = BeforeInitialized{Parent: InfraConditions.Initialized}
 var existingChildren Propagation = ExistingChildren{Parent: InfraConditions.Initialized, Child: InfraConditions.Initialized}
-var infraMessages Formatter = BoundedMessages{MaxLines: 7, MaxBytes: 32768, InlineChars: 80}
+var infraMessages Formatter = InfraMessages{MaxLines: 7, InlineChars: 80}
 
 // Each flat value composes configured implementations of the domain interfaces.
 var InfraAvailability = Aggregation{
@@ -1577,7 +1577,7 @@ func (p InfraProfile) Evaluate(parent Object, children map[string]Object, local 
 
 The companion implementation includes stable ordering of named children, explicit nil handling, compatible reason selection, transition timestamps, and an opaque cause formatter. Internal helpers adapt getter access and stage intermediate Conditions; callers do not create an evaluation bundle.
 
-`BoundedMessages` demonstrates bounded output and UTF-8-safe shortening. It is not the proposed native codec and still materializes selected contributions and detail lines. Bounded diagnostic working memory and large-fan-out performance remain implementation work.
+`BoundedMessages` demonstrates opaque cause rendering, bounded output, and UTF-8-safe shortening. Infra explicitly selects `InfraMessages`, an application-specific implementation of the existing Infra grammar in [legacy_messages.go](examples/infra/legacy_messages.go). The reference multiline tests run against that legacy implementation. It is not the proposed native codec and is never inferred for arbitrary foreign messages. Both implementations still materialize diagnostic detail; bounded working memory and large-fan-out performance remain implementation work.
 
 <details>
 <summary>Diagnostic, object-access, and metadata helper implementations</summary>
@@ -1830,13 +1830,13 @@ Stable reason strings should be retained where possible. New aggregate reasons, 
 
 The Infrastructure example and its companion checks are executable design material, including generic resource-level calls and the demonstrated two-call semantic composition and recovery. The remaining fixtures below define production-library acceptance requirements. Semantic composition and message-format validation remain separate test groups.
 
-The example was checked on 2026-10-29 with Go 1.25.5 and `k8s.io/apimachinery` v0.34.2 in an isolated module. All 27 semantic fixtures, their 27 resource-level caller replays and idempotence checks, the 17 presentation fixtures, output-polarity checks, compatible two-call composition/recovery, pure and failed-evaluation nonmutation, optional children without sync, an unrelated rule set using different names and negative output polarity, and the printed generic invocation passed. This is a check of the design example, not an operator build or execution of the original Infra suite. The fixture file records the checked source hashes and scope.
+The example is checked with Go 1.25 and `k8s.io/apimachinery` v0.34.2 in an isolated module. All 27 semantic fixtures, their 27 resource-level caller replays and idempotence checks, the 17 presentation fixtures, output-polarity checks, compatible two-call composition/recovery, pure and failed-evaluation nonmutation, optional children without sync, an unrelated rule set using different names and negative output polarity, and the printed generic invocation passed. In addition, all 117 ported reference cases run without skips. This is execution of the adapted public cases, not a build of the private package. [reference_tests.json](examples/infra/reference_tests.json) records the source revision, blob identities, case counts, and adaptations. GitHub Actions runs formatting checks and the full example suite with the race detector.
 
 To reproduce the model checks from the repository root:
 
 ```sh
-cd design/infra
-go test ./...
+cd examples/infra
+go test -race ./...
 ```
 
 ### Semantic composition fixture
@@ -1958,4 +1958,4 @@ This misrepresents recoverable failures and introduces a parent lifecycle latch 
 - [API machinery Condition helpers](https://github.com/kubernetes/apimachinery/blob/master/pkg/api/meta/conditions.go).
 - [Cluster API Conditions Getter](https://github.com/kubernetes-sigs/cluster-api/blob/main/util/conditions/getter.go) and [Setter](https://github.com/kubernetes-sigs/cluster-api/blob/main/util/conditions/setter.go).
 - [Kubernetes template project](https://github.com/kubernetes/kubernetes-template-project).
-- [Public Infra model](design/infra/model.go), [checks](design/infra/model_test.go), and [fixtures](design/infra/fixtures.json).
+- [Public Infra model](examples/infra/infra.go), [checks](examples/infra/infra_test.go), and [fixtures](examples/infra/fixtures.json).

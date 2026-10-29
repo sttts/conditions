@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package conditionsproposal is an executable design example, not operator production code.
-package conditionsproposal
+// Package infra is an executable design example, not operator production code.
+package infra
 
 import (
 	"fmt"
@@ -885,7 +885,7 @@ var InfraConditions = ServingInputs{
 var InfraClassification Classifier = ReasonClassifier{Suffixes: []ReasonSuffix{{"Failed", Failed}, {"WaitingForHuman", WaitingForHuman}}}
 var beforeInitialization Propagation = BeforeInitialized{Parent: InfraConditions.Initialized}
 var existingChildren Propagation = ExistingChildren{Parent: InfraConditions.Initialized, Child: InfraConditions.Initialized}
-var infraMessages Formatter = BoundedMessages{MaxLines: 7, MaxBytes: 32768, InlineChars: 80}
+var infraMessages Formatter = InfraMessages{MaxLines: 7, InlineChars: 80}
 
 // Each flat value composes configured implementations of the domain interfaces.
 var InfraAvailability = Aggregation{

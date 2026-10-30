@@ -16,7 +16,6 @@ type (
 	Setter            = c.Setter
 	Conditioned       = c.Conditioned
 	Derivation        = c.Derivation
-	LocalEvaluator    = c.LocalEvaluator
 	Rules             = c.Rules
 	ConditionType     = c.ConditionType
 	Classifier        = c.Classifier

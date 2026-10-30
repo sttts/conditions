@@ -18,7 +18,7 @@ type PlainSetter interface {
 
 // WithChangeDetection adapts a plain setter to the native change-reporting contract.
 func WithChangeDetection(object PlainSetter) Conditioned {
-	if isNilObject(object) {
+	if isNil(object) {
 		return nil
 	}
 	return changeTracking{PlainSetter: object}

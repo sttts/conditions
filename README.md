@@ -109,7 +109,45 @@ changed, err := conditions.Aggregate(
 
 ## Rules and semantics
 
-`Rules.Outputs` is an ordered, flat list of output aggregations for one boundary from children to parent. Each aggregation composes selectors, local precedence, reduction, and message formatting through Go interfaces. Rules are ordinary Go data; custom policies are ordinary Go implementations.
+`Rules.Outputs` explicitly selects output aggregations for one boundary from children to parent. Each aggregation composes selectors, local precedence, reduction, and message formatting through Go interfaces. Rules are ordinary Go data; custom policies are ordinary Go implementations. Output-list order is not evaluation order.
+
+### Choose rules from independent packages
+
+Providers export `Aggregation` values, constructors, or `[]Aggregation` bundles. Callers select only what they need; there is no registration or central profile extension. For example, combine Infra's **local reconciliation** policy with Crossplane's **child readiness** policy:
+
+```go
+// c = github.com/sttts/conditions
+// lifecycle = github.com/sttts/conditions/examples/infra
+// crossplane = github.com/sttts/conditions/examples/crossplane
+rules, err := c.Compose([]c.Aggregation{
+    lifecycle.InfraSynced,
+    crossplane.ReadinessRule(),
+})
+if err != nil {
+    return false, err
+}
+return c.Aggregate(parent, children, rules, localSynced)
+```
+
+This exact controller boundary and a recovery/idempotence test run in the [cross-module example](examples/crossplane/compose_external_test.go). No unselected Infra axes are enabled. A third-party package supplies the same public Go values and interfaces; it does not need to modify the core. [Two independent provider fixtures](provider_contract_test.go) also exercise selection without importing one another.
+
+`Compose(groups ...[]Aggregation)` returns validated `Rules`. It allocates its own output slice; embedded policy values/configuration still follow ordinary Go shallow-copy semantics and should be treated as immutable. Set `rules.Now` on the assembled rules to inject a clock. Direct `Rules{Outputs: ...}` construction remains supported and is validated on every evaluation.
+
+Composition has explicit contracts:
+
+- **One owner per type**, including derived outputs. Duplicate definitions, missing providers, dependency cycles, incomplete rules, and mismatched defaults fail before evaluation. There is no silent override order.
+- **Explicit current-result reads.** `Aggregation.Requires` names selected primary or derived Condition types. Each rule sees previous persisted Conditions, supplied unowned local checks, and only its named dependencies' newly computed values. Unrelated new outputs and transitive dependencies do not leak into its view.
+- **Explicit derivation ownership.** `Derivation.Outputs()` reserves its types. Local arguments cannot overwrite them. Undeclared/repeated derived writes fail without calling the setter. Sibling derivations do not see one another's new results.
+- **Explicit activation.** An output runs only with a supplied local base or declared default. A dependency whose provider abstains or has no base leaves the previous value readable (or missing/Unknown); dependencies do not assert freshness or success.
+- **Local assertions are unambiguous.** Duplicate local types are errors. Unowned local Conditions are copied, not interpreted by a profile-wide fallback. Existing unowned parent Conditions remain intact.
+
+Policies remain ordinary read-only Go implementations, not sandboxed code. They must be pure and deterministic; shared rules/objects must not be mutated concurrently. Single-output `Aggregation.Evaluate` remains a low-level primitive: its caller supplies the view/sequencing and it does not run the composition plan or derivations.
+
+### Migrating the experimental API
+
+`Rules.LocalFirst`, `UnmappedLocal`, `IgnoreLocal`, and the root `LocalEvaluator` interface are removed. Local precedence is each rule's policy; current-output ordering uses `Requires`; ignored derived inputs use declared ownership. To use Infra's local-only prefix policy for another type, select `lifecycle.LocalChecks("Custom")` explicitly instead of installing a catch-all evaluator. `InfraNonDegraded` requires the selected availability/initialization provider; `InfraUpToDate` requires initialization. Missing selections are errors, not automatically enabled policies.
+
+Existing Condition entries retain their slice order; new entries have deterministic ordering, not the old local-first insertion order. Condition identity is its type. The Infra semantic/message/metadata fixtures and repeated-call change assertions remain exercised.
 
 The evaluator keeps these concepts separate:
 

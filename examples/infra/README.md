@@ -29,7 +29,19 @@ The complete setup supplied to the generic evaluator is:
 rules := lifecycle.InfraRules
 ```
 
-Its output list is Available, NonDegraded, UpToDate, Synced, then Deleting. `LocalFirst` also evaluates supplied local-only bases and bases whose policy excludes child input during the local pass. Availability explicitly derives Initialized before the later deferred outputs run. There is no resource discovery or ownership traversal in this rule data.
+Its output list selects Available, NonDegraded, UpToDate, Synced, and Deleting; list order is not evaluation order. Availability owns derived Initialized. NonDegraded explicitly requires current Available and Initialized; UpToDate requires current Initialized. Availability itself reads the previous Initialized latch. The evaluator isolates unrelated current outputs, validates dependencies, and schedules providers before consumers. No profile-wide local-first flag, catch-all evaluator, or ignore list is installed.
+
+Select a coherent subset, or combine it with another package's outputs:
+
+```go
+rules, err := c.Compose([]c.Aggregation{
+    lifecycle.InfraAvailability, // also owns Initialized
+    lifecycle.InfraUpToDate,    // requires that selected Initialized provider
+    lifecycle.LocalChecks("Custom"),
+})
+```
+
+Selecting UpToDate without an Initialized provider is an error. Selecting only `InfraSynced` requires no other Infra axes; the [Crossplane example](../crossplane/compose_external_test.go) composes it with independently implemented child readiness. There is no automatic profile expansion.
 
 | Output | Local and child relationship |
 | --- | --- |
@@ -40,7 +52,7 @@ Its output list is Available, NonDegraded, UpToDate, Synced, then Deleting. `Loc
 | Synced | Local-only base and Synced-prefixed checks. Child Synced is not copied into the parent's reconciliation result, although other outputs can use child sync diagnoses. |
 | Deleting | Runs from its declared default base, but emits a result only while the parent has a deletion timestamp. Deleting children take precedence over teardown-job diagnoses. This negative-polarity output uses True for ongoing deletion. |
 
-The caller supplies each positive output's local base when it should be evaluated; the profile does not default a missing local assertion to success. Deleting has the explicit default needed for metadata-driven evaluation. Other Condition types can use the profile's local-only prefix evaluator. Existing unowned Conditions are retained.
+The caller supplies each positive output's local base when it should be evaluated; the profile does not default a missing local assertion to success. Deleting has the explicit default needed for metadata-driven evaluation. Other Condition types use the local-only prefix policy only when explicitly selected with `LocalChecks(type)`; otherwise their supplied local values are copied without profile interpretation. Existing unowned Conditions are retained.
 
 For example, the classification used by these rules is equivalent to:
 

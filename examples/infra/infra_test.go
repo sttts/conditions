@@ -263,7 +263,7 @@ func TestInfraOutputPolarity(t *testing.T) {
 				setConditions(children["Worker"].(Conditioned), metav1.Condition{Type: "Available", Status: metav1.ConditionTrue, Reason: "Available"})
 			}
 			aggregation := InfraAvailability
-			aggregation.Output = ConditionType{"Result", polarity}
+			aggregation.Output = ConditionType{Type: "Result", Polarity: polarity}
 			got, err := aggregation.Evaluate(parent, children, fixtures[0].Bases[0], fixtureNow())
 			if err != nil {
 				t.Fatal(err)
@@ -342,7 +342,7 @@ func Example_infra() {
 // END INVOCATION
 
 func TestCompatibleCompositionAndRecovery(t *testing.T) {
-	ready := ConditionType{"Ready", TrueIsGood}
+	ready := ConditionType{Type: "Ready", Polarity: TrueIsGood}
 	first := Aggregation{
 		Output: ready,
 		Parent: LocalBaseFirst{Base: ready},
@@ -433,8 +433,8 @@ func TestInfraNilChildrenAndNoSync(t *testing.T) {
 
 // The generic entry point also evaluates unrelated names and a negative parent polarity.
 func TestGenericAggregateUsesOnlySuppliedRules(t *testing.T) {
-	output := ConditionType{"Faulted", FalseIsGood}
-	input := ConditionType{"Accepting", TrueIsGood}
+	output := ConditionType{Type: "Faulted", Polarity: FalseIsGood}
+	input := ConditionType{Type: "Accepting", Polarity: TrueIsGood}
 	rules := Rules{
 		Outputs: []Aggregation{{
 			Output: output,

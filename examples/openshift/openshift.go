@@ -176,20 +176,19 @@ var (
 	upgradeable = c.ConditionType{Type: "Upgradeable", Polarity: c.TrueIsGood}
 )
 
-// OpenShiftRules projects four independent operator-status unions without enabling inertia by default.
+// UnionRule supplies one independently selectable operator-status union.
+// It enables no other axes, inertia, local-input handling, or evaluation-wide policy.
+func UnionRule(condition c.ConditionType) c.Aggregation {
+	return c.Aggregation{
+		Output: condition, DefaultBase: &metav1.Condition{Type: condition.Type}, Parent: c.ChildrenOnly{},
+		Children: OperatorConditions{condition}, Reduction: OperatorUnion{Condition: condition},
+		Messages: UnionMessages{}, Generation: c.NoObservedGeneration,
+	}
+}
+
+// OpenShiftRules selects four independent unions, without enabling inertia by default.
 var OpenShiftRules = c.Rules{Outputs: []c.Aggregation{
-	{Output: available, DefaultBase: &metav1.Condition{Type: "Available"}, Parent: c.ChildrenOnly{},
-		Children: OperatorConditions{available}, Reduction: OperatorUnion{Condition: available},
-		Messages: UnionMessages{}, Generation: c.NoObservedGeneration},
-	{Output: progressing, DefaultBase: &metav1.Condition{Type: "Progressing"}, Parent: c.ChildrenOnly{},
-		Children: OperatorConditions{progressing}, Reduction: OperatorUnion{Condition: progressing},
-		Messages: UnionMessages{}, Generation: c.NoObservedGeneration},
-	{Output: degraded, DefaultBase: &metav1.Condition{Type: "Degraded"}, Parent: c.ChildrenOnly{},
-		Children: OperatorConditions{degraded}, Reduction: OperatorUnion{Condition: degraded},
-		Messages: UnionMessages{}, Generation: c.NoObservedGeneration},
-	{Output: upgradeable, DefaultBase: &metav1.Condition{Type: "Upgradeable"}, Parent: c.ChildrenOnly{},
-		Children: OperatorConditions{upgradeable}, Reduction: OperatorUnion{Condition: upgradeable},
-		Messages: UnionMessages{}, Generation: c.NoObservedGeneration},
+	UnionRule(available), UnionRule(progressing), UnionRule(degraded), UnionRule(upgradeable),
 }}
 
 var (

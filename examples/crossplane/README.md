@@ -42,7 +42,15 @@ rules := c.Rules{Outputs: []c.Aggregation{{
 
 Ready uses `TrueIsGood` on both input and output. `ReadyChildren` and `Readiness` are this example's selector and reducer; `LocalBaseFirst` and the formatter come from the library. The good default base is an explicit policy assumption for omitted local Ready, not a readiness observation inferred by the library. It schedules the output even when the call supplies only local Synced. Missing Ready on a supplied child still contributes Unknown. An empty child set leaves the otherwise-good base sufficient.
 
-[`CrossplaneRules`](crossplane.go) defines this example's policy:
+[`CrossplaneRules`](crossplane.go) selects `ReadinessRule()`. The constructor returns an independently composable `c.Aggregation`, not evaluation-wide settings:
+
+```go
+rules, err := c.Compose([]c.Aggregation{crossplane.ReadinessRule()})
+```
+
+The [cross-module controller call](compose_external_test.go) additionally selects `lifecycle.InfraSynced` from the separate Infra module, without enabling its other axes. It tests local-vs-child sync independence, unchanged opaque diagnostics, recovery, and idempotence. This example module's additional Infra dependency is only for that external-package composition test; neither the core nor readiness policy imports Infra.
+
+The selected readiness policy is:
 
 - Aggregate child Ready assertions into parent Ready. Known bad outranks Unknown; all supplied children must be good for a good result. No children means that an otherwise-good local base is sufficient.
 - Preserve a supplied local bad or unknown Ready base. Otherwise use the declared good default and the child results.

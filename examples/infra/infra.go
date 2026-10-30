@@ -44,7 +44,7 @@ func (p ServingChildren) selectOne(parent, child Object) (Contribution, bool) {
 	syncHuman := syncBad && classify(p.Classifier, synced) == WaitingForHuman
 	allows := func(rule Propagation) bool { return rule != nil && rule.Allows(parent, child) }
 	pick := func(check ConditionType, escalation Escalation, fallback string) (Contribution, bool) {
-		return Contribution{State: State{Bad, escalation}, Condition: check.Read(child), Source: child, Fallback: fallback}, true
+		return Contribution{State: State{Assessment: Bad, Escalation: escalation}, Condition: check.Read(child), Source: child, Fallback: fallback}, true
 	}
 
 	// A job-like child is completely handled here, including its no-contribution cases.
@@ -105,7 +105,7 @@ func (p ServingChildren) selectOne(parent, child Object) (Contribution, bool) {
 		return result, true
 	case p.Condition.Assessment(current) == Unknown && allows(p.Unknown):
 		text := p.BadDescription + ": state is still unknown"
-		return Contribution{State: State{Bad, None}, Condition: current, Source: child, Detail: &text, FromUnknown: true}, true
+		return Contribution{State: State{Assessment: Bad, Escalation: None}, Condition: current, Source: child, Detail: &text, FromUnknown: true}, true
 	default:
 		return Contribution{}, false
 	}
@@ -161,10 +161,10 @@ func (r ParentChildReduction) Reduce(base metav1.Condition, objects map[string]O
 		} {
 			if len(group.items) == 1 {
 				c := group.items[0]
-				return Outcome{State: State{Bad, group.escalation}, Reason: c.Condition.Reason, Summary: fmt.Sprintf(group.one, c.CheckName, c.Condition.Message)}
+				return Outcome{State: State{Assessment: Bad, Escalation: group.escalation}, Reason: c.Condition.Reason, Summary: fmt.Sprintf(group.one, c.CheckName, c.Condition.Message)}
 			}
 			if len(group.items) > 1 {
-				return Outcome{State: State{Bad, group.escalation}, Reason: group.multiple, Summary: group.many + limitedNames(group.items, true)}
+				return Outcome{State: State{Assessment: Bad, Escalation: group.escalation}, Reason: group.multiple, Summary: group.many + limitedNames(group.items, true)}
 			}
 		}
 		return copyOutcome(base, r.Output, r.Classifier)
@@ -178,7 +178,7 @@ func (r ParentChildReduction) Reduce(base metav1.Condition, objects map[string]O
 				}
 			}
 		}
-		return Outcome{State: State{Bad, escalation}, Reason: reason, Summary: joinHeads(heads...), Causes: causes}
+		return Outcome{State: State{Assessment: Bad, Escalation: escalation}, Reason: reason, Summary: joinHeads(heads...), Causes: causes}
 	}
 	localHead := func(group []Contribution, singular, plural string) string {
 		if len(group) == 1 {
@@ -330,7 +330,7 @@ func (p DeletingChildren) Select(parent, child Object) []Contribution {
 
 func (p DeletingChildren) selectOne(parent, child Object) (Contribution, bool) {
 	pick := func(check ConditionType, escalation Escalation, fallback string) (Contribution, bool) {
-		return Contribution{State: State{Bad, escalation}, Condition: check.Read(child), Source: child, Fallback: fallback}, true
+		return Contribution{State: State{Assessment: Bad, Escalation: escalation}, Condition: check.Read(child), Source: child, Fallback: fallback}, true
 	}
 	if isDeleting(child) {
 		deleting := p.Inputs.Deleting.Read(child)
@@ -343,7 +343,7 @@ func (p DeletingChildren) selectOne(parent, child Object) (Contribution, bool) {
 		if deleting.Status != metav1.ConditionUnknown {
 			return pick(p.Inputs.Deleting, None, "is being deleted")
 		}
-		return Contribution{State: State{Bad, None}, Source: child, SuppressDetail: true}, true
+		return Contribution{State: State{Assessment: Bad, Escalation: None}, Source: child, SuppressDetail: true}, true
 	}
 	if child.GetCreationTimestamp().Time.Before(parent.GetDeletionTimestamp().Time) || p.Inputs.Running.Read(child).Status == metav1.ConditionUnknown {
 		return Contribution{}, false
@@ -393,7 +393,7 @@ func (p DeletionReduction) Reduce(base metav1.Condition, objects map[string]Obje
 				causes = append(causes, cause(c))
 			}
 		}
-		return Outcome{State: State{Bad, escalation}, Reason: reason, Summary: summary, Causes: causes}
+		return Outcome{State: State{Assessment: Bad, Escalation: escalation}, Reason: reason, Summary: summary, Causes: causes}
 	}
 	if len(deleting) == 0 {
 		switch {
@@ -425,13 +425,13 @@ func (p DeletionReduction) Reduce(base metav1.Condition, objects map[string]Obje
 
 // The reference profile binds Condition names and polarities explicitly as ordinary data.
 var InfraConditions = ServingInputs{
-	Available: ConditionType{"Available", TrueIsGood}, Initialized: ConditionType{"Initialized", TrueIsGood},
-	NonDegraded: ConditionType{"NonDegraded", TrueIsGood}, Synced: ConditionType{"Synced", TrueIsGood},
-	UpToDate: ConditionType{"UpToDate", TrueIsGood},
-	Running:  ConditionType{"Running", FalseIsGood}, Succeeded: ConditionType{"Succeeded", TrueIsGood},
-	Failed: ConditionType{"Failed", FalseIsGood}, Deleting: ConditionType{"Deleting", FalseIsGood},
+	Available: ConditionType{Type: "Available", Polarity: TrueIsGood}, Initialized: ConditionType{Type: "Initialized", Polarity: TrueIsGood},
+	NonDegraded: ConditionType{Type: "NonDegraded", Polarity: TrueIsGood}, Synced: ConditionType{Type: "Synced", Polarity: TrueIsGood},
+	UpToDate: ConditionType{Type: "UpToDate", Polarity: TrueIsGood},
+	Running:  ConditionType{Type: "Running", Polarity: FalseIsGood}, Succeeded: ConditionType{Type: "Succeeded", Polarity: TrueIsGood},
+	Failed: ConditionType{Type: "Failed", Polarity: FalseIsGood}, Deleting: ConditionType{Type: "Deleting", Polarity: FalseIsGood},
 }
-var InfraClassification Classifier = ReasonClassifier{Suffixes: []ReasonSuffix{{"Failed", Failed}, {"WaitingForHuman", WaitingForHuman}}}
+var InfraClassification Classifier = ReasonClassifier{Suffixes: []ReasonSuffix{{Suffix: "Failed", Escalation: Failed}, {Suffix: "WaitingForHuman", Escalation: WaitingForHuman}}}
 var beforeInitialization Propagation = BeforeInitialized{Parent: InfraConditions.Initialized}
 var existingChildren Propagation = ExistingChildren{Parent: InfraConditions.Initialized, Child: InfraConditions.Initialized}
 var infraMessages Formatter = MultilineMessages{MaxLines: 7, InlineChars: 80}
@@ -450,18 +450,20 @@ var InfraAvailability = Aggregation{
 	Messages:  infraMessages, Generation: PreserveBaseGeneration,
 }
 var InfraNonDegraded = Aggregation{
-	Output: InfraConditions.NonDegraded,
-	Parent: DegradationBase{LocalBaseFirst: LocalBaseFirst{Base: InfraConditions.NonDegraded, Classifier: InfraClassification, OverrideOnDeletion: true}, Inputs: InfraConditions},
-	Local:  PrefixedChecks{Prefix: "NonDegraded", Polarity: TrueIsGood, Classifier: InfraClassification},
+	Requires: []string{"Available", "Initialized"},
+	Output:   InfraConditions.NonDegraded,
+	Parent:   DegradationBase{LocalBaseFirst: LocalBaseFirst{Base: InfraConditions.NonDegraded, Classifier: InfraClassification, OverrideOnDeletion: true}, Inputs: InfraConditions},
+	Local:    PrefixedChecks{Prefix: "NonDegraded", Polarity: TrueIsGood, Classifier: InfraClassification},
 	Children: ServingChildren{Inputs: InfraConditions, Condition: InfraConditions.NonDegraded, Classifier: InfraClassification,
 		False: Always{}, Failure: Always{}, Human: Never{}, SyncError: Always{}, Unavailable: Always{}, JobFailed: Always{}, BadDescription: "is degraded"},
 	Reduction: ParentChildReduction{Inputs: InfraConditions, Output: InfraConditions.NonDegraded, Classifier: InfraClassification, BadSuffix: "Degraded", BadDescription: "degraded children"},
 	Messages:  infraMessages, Generation: PreserveBaseGeneration,
 }
 var InfraUpToDate = Aggregation{
-	Output: InfraConditions.UpToDate,
-	Parent: UpdateBase{LocalBaseFirst: LocalBaseFirst{Base: InfraConditions.UpToDate, Classifier: InfraClassification}, Initialized: InfraConditions.Initialized},
-	Local:  PrefixedChecks{Prefix: "UpToDate", Polarity: TrueIsGood, Classifier: InfraClassification},
+	Requires: []string{"Initialized"},
+	Output:   InfraConditions.UpToDate,
+	Parent:   UpdateBase{LocalBaseFirst: LocalBaseFirst{Base: InfraConditions.UpToDate, Classifier: InfraClassification}, Initialized: InfraConditions.Initialized},
+	Local:    PrefixedChecks{Prefix: "UpToDate", Polarity: TrueIsGood, Classifier: InfraClassification},
 	Children: ServingChildren{Inputs: InfraConditions, Condition: InfraConditions.UpToDate, Classifier: InfraClassification,
 		False: Always{}, Failure: Never{}, Human: Always{}, SyncError: Always{}, Uninitialized: Always{}, JobRunning: Always{}, JobFailed: Always{}, BadDescription: "is updating"},
 	Reduction: ParentChildReduction{Inputs: InfraConditions, Output: InfraConditions.UpToDate, Classifier: InfraClassification, BadSuffix: "Updating", BadDescription: "updating children"},
@@ -469,7 +471,7 @@ var InfraUpToDate = Aggregation{
 }
 var InfraSynced = Aggregation{
 	Output:    InfraConditions.Synced,
-	Parent:    LocalOnly{LocalBaseFirst{Base: InfraConditions.Synced, Classifier: InfraClassification}},
+	Parent:    LocalOnly{LocalBaseFirst: LocalBaseFirst{Base: InfraConditions.Synced, Classifier: InfraClassification}},
 	Local:     PrefixedChecks{Prefix: "Synced", Polarity: TrueIsGood, Classifier: InfraClassification},
 	Reduction: ParentChildReduction{Inputs: InfraConditions, Output: InfraConditions.Synced, Classifier: InfraClassification, LocalOnly: true},
 	Messages:  infraMessages, Generation: PreserveBaseGeneration,
@@ -483,13 +485,9 @@ var InfraDeleting = Aggregation{
 	Messages:    infraMessages, Generation: PreserveBaseGeneration,
 }
 
-// InfraRules expresses the Infra behavior as data consumed by the generic Aggregate function.
+// InfraRules selects the complete Infra behavior. Individual values remain independently selectable.
 var InfraRules = Rules{
-	Outputs:       []Aggregation{InfraAvailability, InfraNonDegraded, InfraUpToDate, InfraSynced, InfraDeleting},
-	LocalFirst:    true,
-	UnmappedLocal: InfraLocalConditions{},
-	IgnoreLocal:   []string{InfraConditions.Initialized.Type},
-	Now:           time.Now,
+	Outputs: []Aggregation{InfraAvailability, InfraNonDegraded, InfraUpToDate, InfraSynced, InfraDeleting},
 }
 
 // InfraProfile optionally binds rules for callers that prefer a short application-specific facade.
@@ -573,24 +571,25 @@ func DeriveInitialized(parent Object, now time.Time) metav1.Condition {
 // InfraInitialization derives the explicit Infra initialized latch after availability evaluation.
 type InfraInitialization struct{}
 
+// Outputs reserves Initialized for this latch, not for caller-supplied local assertions.
+func (InfraInitialization) Outputs() []string { return []string{InfraConditions.Initialized.Type} }
+
 func (InfraInitialization) Derive(parent Object, now time.Time) []metav1.Condition {
 	return []metav1.Condition{DeriveInitialized(parent, now)}
 }
 
-// InfraLocalConditions preserves local-only prefix aggregation for additional Infra Condition types.
-type InfraLocalConditions struct{}
-
-func (InfraLocalConditions) Evaluate(parent Object, local metav1.Condition, now time.Time) (*metav1.Condition, error) {
-	output := ConditionType{local.Type, TrueIsGood}
-	rule := Aggregation{
+// LocalChecks selects Infra's local-only prefix policy for exactly one named output.
+// Additional local types require explicit selection; they do not change other packages' rules.
+func LocalChecks(typ string) Aggregation {
+	output := ConditionType{Type: typ, Polarity: TrueIsGood}
+	return Aggregation{
 		Output:     output,
-		Parent:     LocalOnly{LocalBaseFirst{Base: output, Classifier: InfraClassification}},
-		Local:      PrefixedChecks{Prefix: local.Type, Polarity: TrueIsGood, Classifier: InfraClassification},
+		Parent:     LocalOnly{LocalBaseFirst: LocalBaseFirst{Base: output, Classifier: InfraClassification}},
+		Local:      PrefixedChecks{Prefix: typ, Polarity: TrueIsGood, Classifier: InfraClassification},
 		Reduction:  ParentChildReduction{Output: output, Classifier: InfraClassification, LocalOnly: true},
 		Messages:   infraMessages,
 		Generation: PreserveBaseGeneration,
 	}
-	return rule.Evaluate(parent, nil, local, now)
 }
 
 // Aggregate only injects the facade's rules into the generic resource-level operation.
@@ -611,7 +610,7 @@ func classify(c Classifier, value metav1.Condition) Escalation {
 	return c.Classify(value)
 }
 func badOutcome(reason, message string) Outcome {
-	return Outcome{State: State{Bad, None}, Reason: reason, Summary: message}
+	return Outcome{State: State{Assessment: Bad, Escalation: None}, Reason: reason, Summary: message}
 }
 func copyOutcome(c metav1.Condition, check ConditionType, classifier Classifier) Outcome {
 	assessment := check.Assessment(c)
@@ -619,7 +618,7 @@ func copyOutcome(c metav1.Condition, check ConditionType, classifier Classifier)
 	if assessment == Bad {
 		escalation = classify(classifier, c)
 	}
-	return Outcome{State: State{assessment, escalation}, Reason: c.Reason, Summary: c.Message, Copied: &c}
+	return Outcome{State: State{Assessment: assessment, Escalation: escalation}, Reason: c.Reason, Summary: c.Message, Copied: &c}
 }
 
 // namedObject retains the caller's diagnostic alias beside the supplied resource.
@@ -644,7 +643,7 @@ func cause(c Contribution) Cause {
 		label = c.CheckName
 	}
 	if c.Detail != nil {
-		return Cause{label, *c.Detail}
+		return Cause{Reference: label, Message: *c.Detail}
 	}
 	message, reason := strings.TrimSpace(c.Condition.Message), strings.TrimSpace(c.Condition.Reason)
 	switch {
@@ -655,7 +654,7 @@ func cause(c Contribution) Cause {
 	case reason != "" && !strings.Contains(message, reason):
 		message += " (" + reason + ")"
 	}
-	return Cause{label, message}
+	return Cause{Reference: label, Message: message}
 }
 func limitNames(names []string) string {
 	if len(names) <= 3 {

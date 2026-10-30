@@ -45,7 +45,15 @@ rule := c.Aggregation{
 }
 ```
 
-`OperatorConditions` and `OperatorUnion` are this example's policy implementations. `ChildrenOnly` supplies the library's no-local-precedence policy. The default base activates the output without a local argument; it is not an assertion of success. The reducer determines NoData/Unknown from the selected inputs. The other three outputs use the same pattern with the condition type and polarity from the table.
+`OperatorConditions` and `OperatorUnion` are this example's policy implementations. `UnionRule(conditionType)` returns this configured aggregation as an independently selectable value. For example:
+
+```go
+rules, err := c.Compose([]c.Aggregation{
+    openshift.UnionRule(c.ConditionType{Type: "Degraded", Polarity: c.FalseIsGood}),
+})
+```
+
+This selects only Degraded; it enables none of the other three axes. `OpenShiftRules` selects all four via the same constructor. Duplicate output selection is an error, not an override order. `ChildrenOnly` supplies the library's no-local-precedence policy. The default base activates the output without a local argument; it is not an assertion of success. The reducer determines NoData/Unknown from the selected inputs. The other three outputs use the same pattern with the condition type and polarity from the table.
 
 ### Reduction and diagnostics
 

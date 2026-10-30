@@ -8,6 +8,7 @@ package infra
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -1480,6 +1481,9 @@ func TestReferenceAggregate(t *testing.T) {
 			actual := cloneConditions(tt.parent.GetConditions())
 			stripConditionMessages(expected)
 			stripConditionMessages(actual)
+			// Conditions are a map keyed by type; composition does not preserve incidental insertion order.
+			sort.Slice(expected, func(i, j int) bool { return expected[i].Type < expected[j].Type })
+			sort.Slice(actual, func(i, j int) bool { return actual[i].Type < actual[j].Type })
 			if diff := cmp.Diff(expected, actual); diff != "" {
 				t.Errorf("Conditions mismatch (-want +got):\n%s", diff)
 			}
@@ -1871,7 +1875,7 @@ func TestReferenceAggregateSubConditions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual, err := (InfraLocalConditions{}).Evaluate(tt.parent, tt.cond, parentTime.Time)
+			actual, err := LocalChecks(tt.cond.Type).Evaluate(tt.parent, nil, tt.cond, parentTime.Time)
 			if err != nil {
 				t.Fatal(err)
 			}

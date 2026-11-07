@@ -18,13 +18,13 @@ func TestHelpersAndPlainGoHaveSameBehavior(t *testing.T) {
 	clock := func() time.Time { return time.Unix(123, 0) }
 	helpers := c.Define(c.Definition{
 		Now:      clock,
-		Outputs:  []c.OutputDefinition{c.Output("Ready", c.Spec{Polarity: c.TrueIsGood}).Format(c.BoundedMessages{}), c.Output("Synced", c.Spec{}).Local()},
+		Outputs:  []c.OutputDefinition{c.All("Ready", c.Spec{Polarity: c.TrueIsGood}).Format(c.BoundedMessages{}), c.Local("Synced", c.Spec{})},
 		Children: []c.ChildBinding{c.Child(input, c.Classify(c.Map("Available", "Ready").When(c.Status(metav1.ConditionTrue)).Escalate(c.Failed, c.Reason("Broken")))).For(c.G("db.io"))},
 	})
 	plain := c.Define(c.Definition{
 		Now: clock,
 		Outputs: []c.OutputDefinition{
-			{Name: "Ready", Spec: c.Spec{Polarity: c.TrueIsGood}, Formatter: c.BoundedMessages{}},
+			{Name: "Ready", Spec: c.Spec{Polarity: c.TrueIsGood}, Reduction: c.AllReducer{}, Formatter: c.BoundedMessages{}},
 			{Name: "Synced", Spec: c.Spec{}, LocalOnly: true},
 		},
 		Children: []c.ChildBinding{{
@@ -84,7 +84,7 @@ func TestGoCallbacksAndPublishedReasons(t *testing.T) {
 		t.Fatalf("custom selector escaped binding scope: %d calls", calls)
 	}
 	top := c.Define(c.Definition{
-		Outputs:  []c.OutputDefinition{c.Output("Ready", c.Spec{})},
+		Outputs:  []c.OutputDefinition{c.All("Ready", c.Spec{})},
 		Children: []c.ChildBinding{c.Child(a.Schema(), c.Classify(c.Map("Healthy", "Ready")))},
 	})
 	root := &object{}
@@ -99,7 +99,7 @@ func TestDefinitionSnapshotsReasonMapsAndMappings(t *testing.T) {
 	spec := c.Spec{Reasons: c.ReasonClassifier{Reasons: reasons}}
 	mapping := c.Map("Available", "Ready").Escalate(c.WaitingForHuman, c.Reason("Manual"))
 	binding := c.Child(c.Schema{Conditions: map[string]c.Spec{"Available": spec}}, c.Classify(mapping))
-	d := c.Definition{Outputs: []c.OutputDefinition{c.Output("Ready", spec)}, Children: []c.ChildBinding{binding}}
+	d := c.Definition{Outputs: []c.OutputDefinition{c.All("Ready", spec)}, Children: []c.ChildBinding{binding}}
 	a := c.Define(d)
 	reasons["Broken"] = c.None
 	mapping.Overrides[0].Level = c.None
@@ -119,7 +119,7 @@ func TestDefinitionSnapshotsReasonMapsAndMappings(t *testing.T) {
 }
 
 func TestPublicConfigurationValidation(t *testing.T) {
-	output := c.Output("Ready", c.Spec{})
+	output := c.All("Ready", c.Spec{})
 	for _, tc := range []struct {
 		name, want string
 		def        c.Definition
@@ -143,7 +143,7 @@ func TestFormatterDoesNotRequireInlineOrChangeSemantics(t *testing.T) {
 		}
 		return summary + " / " + causes[0].Message
 	})
-	output := c.Output("Ready", c.Spec{}).Format(format)
+	output := c.All("Ready", c.Spec{}).Format(format)
 	// The helper and the public field install the same one-method interface.
 	var _ c.Formatter = output.Formatter
 	d := c.Definition{
@@ -172,7 +172,7 @@ func TestFormatterDoesNotRequireInlineOrChangeSemantics(t *testing.T) {
 }
 
 func TestOutputCompositionValidation(t *testing.T) {
-	good := c.Output("Ready", c.Spec{})
+	good := c.All("Ready", c.Spec{})
 	for _, tc := range []struct {
 		name, want string
 		outputs    []c.OutputDefinition
@@ -218,7 +218,7 @@ func TestDerivedContractPublicationAndSnapshot(t *testing.T) {
 	parent := &object{}
 	c.Aggregate(parent, nil, producer)
 	consumer := c.Define(c.Definition{
-		Outputs:  []c.OutputDefinition{c.Output("Healthy", c.Spec{})},
+		Outputs:  []c.OutputDefinition{c.All("Healthy", c.Spec{})},
 		Children: []c.ChildBinding{c.Child(published, c.Classify(c.Map("Initialized", "Healthy")))},
 	})
 	root := &object{}

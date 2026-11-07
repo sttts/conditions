@@ -43,7 +43,7 @@ output and a binding to NativeSchema. `Schema = Aggregation.Schema()` publishes 
 aggregation := c.Define(c.Definition{
     Outputs: []c.OutputDefinition{
         crossplane.ReadyOutput,
-        c.Output("Synced", c.Spec{Polarity: c.TrueIsGood}).Local(),
+        c.Local("Synced", c.Spec{Polarity: c.TrueIsGood}),
     },
     Children: []c.ChildBinding{c.Child(crossplane.NativeSchema, c.Identity)},
 })

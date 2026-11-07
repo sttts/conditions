@@ -24,8 +24,8 @@ In the consuming application:
 var Aggregation = conditions.Define(conditions.Definition{
     Resources: []conditions.ResourceMatch{conditions.GK("apps.example.io", "Application")},
     Outputs: []conditions.OutputDefinition{
-        conditions.Output("Ready", conditions.Spec{Polarity: conditions.TrueIsGood}),
-        conditions.Output("Synced", conditions.Spec{Polarity: conditions.TrueIsGood}).Local(),
+        conditions.All("Ready", conditions.Spec{Polarity: conditions.TrueIsGood}),
+        conditions.Local("Synced", conditions.Spec{Polarity: conditions.TrueIsGood}),
     },
     Children: []conditions.ChildBinding{
         conditions.Child(database.Schema, conditions.Classify(
@@ -38,6 +38,25 @@ var Aggregation = conditions.Define(conditions.Definition{
 // Publish exactly the contract produced by this aggregation.
 var Schema = Aggregation.Schema()
 ```
+
+`All` and `Local` express the common output policies directly:
+
+| Policy | No local assertion | With a local assertion | No child contributions |
+| --- | --- | --- | --- |
+| `All(name, spec)` | Aggregate child contributions | Bad/Unknown local assertions take precedence; good permits aggregation | Unknown, unless a bad/Unknown local assertion takes precedence |
+| `Local(name, spec)` | Create nothing; retain an existing condition | Use the local assertion, preserving its observed generation | Children never contribute |
+
+A missing assertion is not an assertion of Unknown. Both helpers return public
+`OutputDefinition` values; the equivalent literals are:
+
+```go
+conditions.OutputDefinition{Name: "Ready", Spec: readySpec, Reduction: conditions.AllReducer{}}
+conditions.OutputDefinition{Name: "Synced", Spec: syncedSpec, LocalOnly: true}
+```
+
+For custom domain policies, use `OutputDefinition` directly or start with `Output(name, spec)`
+and supply the appropriate selector/reducer. No additional absence-policy options are needed
+for the common cases.
 
 The controller's invocation is fixed:
 
@@ -72,8 +91,8 @@ same observations: false
 | `Identity` | Map the intersection of names with equal semantic meaning; each schema supplies its own polarity. |
 | `Map(...).When(Status(metav1.ConditionFalse))` | Include only matching observations. |
 | `Map(...).Escalate(WaitingForHuman, Reason("InvalidConfiguration"))` | Override escalation for matching **bad** observations. |
-| `Output("Synced", spec).Local()` | Require an explicit local assertion; children cannot set it. |
-| `Output("Ready", spec).Format(MultilineMessages{})` | Select diagnostic formatting independently of semantics. |
+| `Local("Synced", spec)` | Require an explicit local assertion; children cannot set it. |
+| `All("Ready", spec).Format(MultilineMessages{})` | Select diagnostic formatting independently of semantics. |
 
 A source may map to several targets. Duplicate source/target mappings are rejected: put
 reason-specific overrides on one mapping. Overrides are first-match, in declaration order;
@@ -84,7 +103,7 @@ For exhaustive integration checks, set `Classification.RequireAll`; then every d
 source must be mapped or explicitly ignored. `Identity` maps names shared with the output
 schema and asserts their semantic compatibility.
 
-The default reduction is `All`: Bad dominates Unknown, which dominates Good. No contributing
+The `All` helper uses `AllReducer`: Bad dominates Unknown, which dominates Good. No contributing
 observations produces Unknown. Among bad observations, Failed dominates WaitingForHuman,
 then ordinary bad. A bad or unknown local base takes precedence over children. The generated
 reasons are published in `Aggregation.Schema()` so escalation survives another aggregation
@@ -129,7 +148,7 @@ types := conditions.Types(scheme) // scheme registration is already complete
 var Aggregation = conditions.Define(conditions.Definition{
     Scheme: scheme,
     Outputs: []conditions.OutputDefinition{
-        conditions.Output("Ready", conditions.Spec{Polarity: conditions.TrueIsGood}),
+        conditions.All("Ready", conditions.Spec{Polarity: conditions.TrueIsGood}),
     },
     Children: []conditions.ChildBinding{
         conditions.Child(database.Schema, conditions.Classify(
@@ -176,7 +195,7 @@ in sync, and no `.Using(rule)` bridge. `Define` derives the published schema fro
 Ordinary loops and functions can assemble a definition or share output values across consumers.
 `Definition.Now` supplies an optional clock.
 
-Use `OutputDefinition.Reduction`, `Parent`, `LocalChecks`, `Formatter`, and `Generation` for
+For advanced policies, use `OutputDefinition.Reduction`, `Parent`, `LocalChecks`, `Formatter`, and `Generation` for
 custom behavior. `ChildSelectorFunc`, `LocalSelectorFunc`, `ReducerFunc`, and `ClassifierFunc`
 accept ordinary Go snippets wherever defining a separate type would add little value:
 
@@ -265,7 +284,7 @@ type Formatter interface {
 }
 ```
 
-Set `OutputDefinition.Formatter`, or use `Output(name, spec).Format(formatter)`.
+Set `OutputDefinition.Formatter`, or use `All(name, spec).Format(formatter)`.
 The reducer produces an `Outcome`; `Formatter.Format(outcome.Summary, outcome.Causes)` produces
 only the message. Status, reason, escalation, generation, and transition time are independent.
 The default is `BoundedMessages{}`. `FormatterFunc` accepts a Go function with this signature.

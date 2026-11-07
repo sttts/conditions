@@ -31,7 +31,7 @@ Classification normalizes source polarity, retains diagnostics, and optionally a
 escalation using first-match Reason/Status predicates. Reduction combines contributions and
 output encoding uses the destination schema's polarity. There are no universal semantic Kinds.
 
-The default `All` reducer exports its own escalation reason interpretation with its output
+The default `AllReducer` exports its own escalation reason interpretation with its output
 schema. Therefore a subsequent consumer can reference that schema without reproducing the
 original reducer. Local-only outputs and contextual Go policies remain explicit. `Definition` and all helper results are open Go structs. Each output declares its contract
 and derivation together; the output schema is generated from these definitions. There is
@@ -81,6 +81,18 @@ If a dependency produces no current result, its persisted value remains visible.
 expresses dataflow, not freshness. Output ownership prevents caller-supplied local conditions
 from replacing an independently derived condition such as Infra's Initialized latch.
 
+## Common output policies
+
+`All(name, spec)` combines child contributions with an optional local assertion. Bad or Unknown
+local assertions take precedence; a good local assertion permits aggregation. No child/local-check
+contributions produce Unknown even with a good local assertion. `Local(name, spec)` accepts only
+the local assertion; omission creates no condition and retains any persisted one. Child assertions
+cannot substitute for the controller's local assertion.
+
+These helpers construct public OutputDefinition values (`Reduction: AllReducer{}` and
+`LocalOnly: true`, respectively). Advanced domain policies remain plain Go configuration.
+No new interpreter or absence-policy enum is introduced.
+
 ## Semantics and extension points
 
 Source polarity normalizes True/False into Good/Bad; other statuses remain Unknown.
@@ -88,9 +100,9 @@ Source polarity normalizes True/False into Good/Bad; other statuses remain Unkno
 source names into consumer outputs and can adjust participation or escalation. No universal
 semantic kinds are imposed on independent APIs.
 
-The default reducer is All, with Bad > Unknown > Good and Failed > WaitingForHuman > None.
+The default reducer is AllReducer, with Bad > Unknown > Good and Failed > WaitingForHuman > None.
 No contributions means Unknown. Non-good local bases take precedence over children.
-Default All outputs publish their generated escalation-reason interpretation automatically.
+All outputs publish their generated escalation-reason interpretation automatically.
 Custom reducers declare their reason interpretation in the output's Spec.
 
 Domain code remains ordinary Go. Selector, reducer, parent-policy, derivation and formatter

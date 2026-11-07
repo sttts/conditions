@@ -159,7 +159,7 @@ func TestDefinitionFailures(t *testing.T) {
 func TestAllUnknownLocalAndOverrides(t *testing.T) {
 	s := contract("Ready", c.TrueIsGood)
 	mapping := c.Map("Ready", "Ready").Escalate(c.WaitingForHuman, c.Reason("Manual")).Escalate(c.Failed)
-	a := c.Define(c.Definition{Outputs: []c.OutputDefinition{c.Output("Ready", s.Conditions["Ready"]).Reduce(c.All{})}, Children: []c.ChildBinding{c.Child(s, c.Classify(mapping))}})
+	a := c.Define(c.Definition{Outputs: []c.OutputDefinition{c.All("Ready", s.Conditions["Ready"]).Reduce(c.AllReducer{})}, Children: []c.ChildBinding{c.Child(s, c.Classify(mapping))}})
 	for _, tc := range []struct {
 		name     string
 		children []c.Object
@@ -188,7 +188,7 @@ func TestAllUnknownLocalAndOverrides(t *testing.T) {
 	if v, _ := c.Lookup(p, "Ready"); v.Reason != "LocalUnknown" {
 		t.Fatal(v)
 	}
-	localOnly := c.Define(c.Definition{Outputs: []c.OutputDefinition{c.Output("Ready", s.Conditions["Ready"]).Local()}})
+	localOnly := c.Define(c.Definition{Outputs: []c.OutputDefinition{c.Local("Ready", s.Conditions["Ready"])}})
 	p = &object{}
 	c.Aggregate(p, nil, localOnly)
 	if len(p.conditions) != 0 {
@@ -259,7 +259,7 @@ func TestFilteringAndConditionalParticipation(t *testing.T) {
 func define(s c.Schema, children ...c.ChildBinding) *c.Aggregation {
 	d := c.Definition{Resources: s.Resources, Children: children, Now: func() time.Time { return time.Unix(100, 0) }}
 	for name, spec := range s.Conditions {
-		d.Outputs = append(d.Outputs, c.Output(name, spec))
+		d.Outputs = append(d.Outputs, c.All(name, spec))
 	}
 	return c.Define(d)
 }

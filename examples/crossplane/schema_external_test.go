@@ -20,8 +20,8 @@ import (
 var application = c.Define(c.Definition{
 	Resources: []c.ResourceMatch{c.G("apps.example.io")},
 	Outputs: []c.OutputDefinition{
-		c.Output("Ready", c.Spec{Polarity: c.TrueIsGood}),
-		c.Output("Synced", c.Spec{Polarity: c.TrueIsGood}).Local(),
+		c.All("Ready", c.Spec{Polarity: c.TrueIsGood}),
+		c.Local("Synced", c.Spec{Polarity: c.TrueIsGood}),
 	},
 	Children: []c.ChildBinding{
 		c.Child(infra.Schema, c.Classify(c.Map("Available", "Ready"))).For(c.GK("infra.example.io", "Worker")),
@@ -64,7 +64,7 @@ func TestPublishedSchemasAcrossModulesAndLevels(t *testing.T) {
 		t.Fatalf("lost provider's escalation: %#v", value)
 	}
 	next := c.Define(c.Definition{
-		Outputs:  []c.OutputDefinition{c.Output("Ready", applicationSchema.Conditions["Ready"]), c.Output("Synced", applicationSchema.Conditions["Synced"]).Local()},
+		Outputs:  []c.OutputDefinition{c.All("Ready", applicationSchema.Conditions["Ready"]), c.Local("Synced", applicationSchema.Conditions["Synced"])},
 		Children: []c.ChildBinding{c.Child(applicationSchema, c.Identity)},
 	})
 	root := crossplane.Adapter{Resource: &crossplane.Resource{}}

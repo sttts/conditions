@@ -23,8 +23,8 @@ var databaseSchema = c.Schema{
 var applicationAggregation = c.Define(c.Definition{
 	Resources: []c.ResourceMatch{c.GK("apps.example.io", "Application")},
 	Outputs: []c.OutputDefinition{
-		c.Output("Ready", c.Spec{Polarity: c.TrueIsGood}),
-		c.Output("Synced", c.Spec{Polarity: c.TrueIsGood}).Local(),
+		c.All("Ready", c.Spec{Polarity: c.TrueIsGood}),
+		c.Local("Synced", c.Spec{Polarity: c.TrueIsGood}),
 	},
 	Children: []c.ChildBinding{
 		c.Child(databaseSchema, c.Classify(

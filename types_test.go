@@ -102,7 +102,7 @@ func TestTypedChildrenAndResolutionAtomicity(t *testing.T) {
 	input := contract("Available", c.TrueIsGood)
 	d := c.Definition{
 		Scheme:   s,
-		Outputs:  []c.OutputDefinition{c.Output("Ready", c.Spec{})},
+		Outputs:  []c.OutputDefinition{c.All("Ready", c.Spec{})},
 		Children: []c.ChildBinding{c.Child(input, c.Classify(c.Map("Available", "Ready"))).For(c.Types(s).GK(&apiObject{}))},
 	}
 	child := &apiObject{object: *observation("Available", metav1.ConditionTrue, "Serving")}
@@ -162,7 +162,7 @@ func ExampleTypes() {
 	types := c.Types(scheme)
 	aggregation := c.Define(c.Definition{
 		Scheme:  scheme,
-		Outputs: []c.OutputDefinition{c.Output("Ready", c.Spec{Polarity: c.TrueIsGood})},
+		Outputs: []c.OutputDefinition{c.All("Ready", c.Spec{Polarity: c.TrueIsGood})},
 		Children: []c.ChildBinding{
 			c.Child(contract("Available", c.TrueIsGood), c.Classify(c.Map("Available", "Ready"))).For(types.GK(&apiObject{})),
 		},

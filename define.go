@@ -26,7 +26,8 @@ type Definition struct {
 }
 
 // OutputDefinition declares both a published contract and its derivation.
-// Nil Parent, Reduction and Formatter select the standard local-precedence/All behavior.
+// Prefer All or Local to express the common policies. For direct struct configuration,
+// nil Parent, Reduction and Formatter select the standard local-precedence/All behavior.
 // Nil Children uses classified child bindings. A custom Children selector reads the
 // original objects and owns their interpretation, subject to the same binding scopes.
 // Callbacks and interface implementations must be read-only and concurrency-safe.
@@ -45,11 +46,27 @@ type OutputDefinition struct {
 	Derived     []Derivation
 }
 
-// Output declares an output with its published interpretation, exactly once.
+// Output starts an advanced output definition for custom selectors and reducers.
+// Prefer All or Local for the common policies. Its fields remain ordinary Go data.
 func Output(name string, spec Spec) OutputDefinition {
 	return OutputDefinition{Name: name, Spec: spec}
 }
-func (o OutputDefinition) Local() OutputDefinition { o.LocalOnly = true; return o }
+
+// All aggregates child contributions with an optional local assertion. A bad or
+// unknown local assertion takes precedence. Without a local assertion, children
+// determine the result. No contributions produces Unknown, even with a good local
+// assertion. The output's Spec interprets its own polarity and reasons.
+func All(name string, spec Spec) OutputDefinition {
+	return OutputDefinition{Name: name, Spec: spec, Reduction: AllReducer{}}
+}
+
+// Local accepts only the controller's local assertion and excludes child contributions.
+// Without an assertion it produces no new condition and preserves any existing one.
+// Supplied assertions preserve their observed generation; transition times are managed
+// by aggregation as usual.
+func Local(name string, spec Spec) OutputDefinition {
+	return OutputDefinition{Name: name, Spec: spec, LocalOnly: true}
+}
 func (o OutputDefinition) Reduce(reducer Reducer) OutputDefinition {
 	if isNil(reducer) {
 		panic("conditions: nil reducer")
@@ -99,7 +116,7 @@ func Define(d Definition) *Aggregation {
 			panic("conditions: invalid generation policy")
 		}
 		spec := o.Spec
-		_, all := o.Reduction.(All)
+		_, all := o.Reduction.(AllReducer)
 		if !o.LocalOnly && (o.Reduction == nil || all) {
 			// Clone before wrapping so exported schemas do not share mutable reason maps.
 			spec = cloneSchema(Schema{Conditions: map[string]Spec{o.Name: spec}}).Conditions[o.Name]
@@ -151,7 +168,7 @@ func Define(d Definition) *Aggregation {
 		if rule.Children == nil {
 			rule.Children = classifiedSelector{aggregation: a, target: o.Name}
 		}
-		_, all := rule.Reduction.(All)
+		_, all := rule.Reduction.(AllReducer)
 		if rule.Reduction == nil || all {
 			rule.Reduction = configuredAll{Condition: typ, Classifier: spec.Reasons}
 		}
@@ -330,11 +347,11 @@ func (c aggregateClassifier) Classify(value metav1.Condition) Escalation {
 	return classify(c.fallback, value)
 }
 
-// All combines normalized contributions: Bad > Unknown > Good. Among bad inputs,
-// Failed > WaitingForHuman > None. No contributions is Unknown. A non-good local
-// assertion takes precedence; healthy local assertions permit child aggregation.
-// Output reasons encode escalation and are understood by the Schema returned by Define.
-type All struct{}
+// AllReducer combines normalized contributions: Bad > Unknown > Good. Among bad inputs,
+// Failed > WaitingForHuman > None. No contributions is Unknown. It reduces the
+// normalized local-check and child contributions, not the base assertion. The All
+// helper adds local-base precedence and publishes the generated reason semantics.
+type AllReducer struct{}
 type configuredAll struct {
 	Condition  ConditionType
 	Classifier Classifier
@@ -351,10 +368,10 @@ func (r configuredAll) Reduce(base metav1.Condition, objects map[string]Object, 
 	if r.Condition.Assessment(base) != Good {
 		return copyOutcome(base, r.Condition, r.Classifier)
 	}
-	return (All{}).Reduce(base, objects, local, children)
+	return (AllReducer{}).Reduce(base, objects, local, children)
 }
 
-func (All) Reduce(_ metav1.Condition, _ map[string]Object, local, children []Contribution) Outcome {
+func (AllReducer) Reduce(_ metav1.Condition, _ map[string]Object, local, children []Contribution) Outcome {
 	values := append(append([]Contribution(nil), local...), children...)
 	state := State{Assessment: Good}
 	if len(values) == 0 {

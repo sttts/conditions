@@ -28,7 +28,7 @@ var ReadyOutput = c.OutputDefinition{
 
 func definition() c.Definition {
 	return c.Definition{
-		Outputs:  []c.OutputDefinition{ReadyOutput, c.Output("Synced", NativeSchema.Conditions["Synced"]).Local()},
+		Outputs:  []c.OutputDefinition{ReadyOutput, c.Local("Synced", NativeSchema.Conditions["Synced"])},
 		Children: []c.ChildBinding{c.Child(NativeSchema, c.Identity)},
 	}
 }

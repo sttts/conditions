@@ -10,9 +10,9 @@ import (
 )
 
 // Rules supplies one local-only readiness assertion; callers supply the base.
-func Rules() []c.Aggregation {
+func Rules() []c.Rule {
 	ready := c.ConditionType{Type: "Ready"}
-	return []c.Aggregation{{Output: ready, Parent: c.LocalOnly{LocalBaseFirst: c.LocalBaseFirst{Base: ready}}, Reduction: copyBase{}, Messages: c.MultilineMessages{}}}
+	return []c.Rule{{Output: ready, Parent: c.LocalOnly{LocalBaseFirst: c.LocalBaseFirst{Base: ready}}, Reduction: copyBase{}, Messages: c.MultilineMessages{}}}
 }
 
 type copyBase struct{}

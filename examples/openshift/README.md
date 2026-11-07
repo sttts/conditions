@@ -1,6 +1,15 @@
 # OpenShift operator Conditions
 
-This example aggregates **operator status**, using native OpenShift API types. Several controllers publish assertions such as `ConfigDegraded` and `RouteDegraded` in one operator configuration object's `status.conditions`. The caller supplies that operator to `Aggregate`; the rules produce the four independent Conditions of a `config.openshift.io/v1 ClusterOperator`.
+## Schema API
+
+This package publishes `Aggregation` and `Schema = Aggregation.Schema()` as ordinary global
+values. Consumers import `Schema`, bind it using `conditions.Child`, and choose explicit
+`Classify` mappings or `Identity`. See [schema.go](schema.go) for the definition and the
+[root README](../../README.md) for the API. Each output declares its contract and derivation together. Domain logic is ordinary Go;
+the low-level rules below remain the independent reference for compatibility tests.
+
+
+This example aggregates **operator status**, using native OpenShift API types. Several controllers publish assertions such as `ConfigDegraded` and `RouteDegraded` in one operator configuration object's `status.conditions`. The caller supplies that operator to `ApplyRules`; the rules produce the four independent Conditions of a `config.openshift.io/v1 ClusterOperator`.
 
 The inputs are the operator's already-computed assertions. This package does not inspect Pods, Deployments, or operand/component Conditions. The negative `Degraded` flag describes the operator's inability to fulfill intent; it is not an aggregation of every operand's readiness.
 
@@ -34,7 +43,7 @@ The Degraded entry in the complete rule set has this shape. Here `c` imports the
 
 ```go
 degraded := c.ConditionType{Type: "Degraded", Polarity: c.FalseIsGood}
-rule := c.Aggregation{
+rule := c.Rule{
     Output:      degraded,
     DefaultBase: &metav1.Condition{Type: "Degraded"},
     Parent:      c.ChildrenOnly{},
@@ -48,7 +57,7 @@ rule := c.Aggregation{
 `OperatorConditions` and `OperatorUnion` are this example's policy implementations. `UnionRule(conditionType)` returns this configured aggregation as an independently selectable value. For example:
 
 ```go
-rules, err := c.Compose([]c.Aggregation{
+rules, err := c.Compose([]c.Rule{
     openshift.UnionRule(c.ConditionType{Type: "Degraded", Polarity: c.FalseIsGood}),
 })
 ```
@@ -70,7 +79,7 @@ The example pins `openshift/api` at the release-4.19-compatible revision in [go.
 `operator` is an existing `*operatorv1.Console`; `cluster` is an existing `*configv1.ClusterOperator`. The explicit adapter reads its native `OperatorStatus`:
 
 ```go
-changed, err := c.Aggregate(
+changed, err := c.ApplyRules(
     openshift.ClusterOperator{ClusterOperator: cluster},
     map[string]c.Object{
         "Operator": openshift.Operator{

@@ -437,7 +437,7 @@ var existingChildren Propagation = ExistingChildren{Parent: InfraConditions.Init
 var infraMessages Formatter = MultilineMessages{MaxLines: 7, InlineChars: 80}
 
 // Each flat value composes configured implementations of the domain interfaces.
-var InfraAvailability = Aggregation{
+var InfraAvailability = Rule{
 	Derived: []Derivation{InfraInitialization{}},
 	Output:  InfraConditions.Available,
 	Parent:  LocalBaseFirst{Base: InfraConditions.Available, Classifier: InfraClassification, OverrideOnDeletion: true},
@@ -449,7 +449,7 @@ var InfraAvailability = Aggregation{
 	Reduction: ParentChildReduction{Inputs: InfraConditions, Output: InfraConditions.Available, Classifier: InfraClassification, BadSuffix: "NotAvailable", BadDescription: "unavailable children"},
 	Messages:  infraMessages, Generation: PreserveBaseGeneration,
 }
-var InfraNonDegraded = Aggregation{
+var InfraNonDegraded = Rule{
 	Requires: []string{"Available", "Initialized"},
 	Output:   InfraConditions.NonDegraded,
 	Parent:   DegradationBase{LocalBaseFirst: LocalBaseFirst{Base: InfraConditions.NonDegraded, Classifier: InfraClassification, OverrideOnDeletion: true}, Inputs: InfraConditions},
@@ -459,7 +459,7 @@ var InfraNonDegraded = Aggregation{
 	Reduction: ParentChildReduction{Inputs: InfraConditions, Output: InfraConditions.NonDegraded, Classifier: InfraClassification, BadSuffix: "Degraded", BadDescription: "degraded children"},
 	Messages:  infraMessages, Generation: PreserveBaseGeneration,
 }
-var InfraUpToDate = Aggregation{
+var InfraUpToDate = Rule{
 	Requires: []string{"Initialized"},
 	Output:   InfraConditions.UpToDate,
 	Parent:   UpdateBase{LocalBaseFirst: LocalBaseFirst{Base: InfraConditions.UpToDate, Classifier: InfraClassification}, Initialized: InfraConditions.Initialized},
@@ -469,14 +469,14 @@ var InfraUpToDate = Aggregation{
 	Reduction: ParentChildReduction{Inputs: InfraConditions, Output: InfraConditions.UpToDate, Classifier: InfraClassification, BadSuffix: "Updating", BadDescription: "updating children"},
 	Messages:  infraMessages, Generation: PreserveBaseGeneration,
 }
-var InfraSynced = Aggregation{
+var InfraSynced = Rule{
 	Output:    InfraConditions.Synced,
 	Parent:    LocalOnly{LocalBaseFirst: LocalBaseFirst{Base: InfraConditions.Synced, Classifier: InfraClassification}},
 	Local:     PrefixedChecks{Prefix: "Synced", Polarity: TrueIsGood, Classifier: InfraClassification},
 	Reduction: ParentChildReduction{Inputs: InfraConditions, Output: InfraConditions.Synced, Classifier: InfraClassification, LocalOnly: true},
 	Messages:  infraMessages, Generation: PreserveBaseGeneration,
 }
-var InfraDeleting = Aggregation{
+var InfraDeleting = Rule{
 	DefaultBase: &metav1.Condition{Type: "Deleting", Status: metav1.ConditionTrue, Reason: "Deleting", Message: "resource is being deleted"},
 	Output:      InfraConditions.Deleting,
 	Parent:      DeletionBase{Classifier: InfraClassification, Output: InfraConditions.Deleting},
@@ -487,7 +487,7 @@ var InfraDeleting = Aggregation{
 
 // InfraRules selects the complete Infra behavior. Individual values remain independently selectable.
 var InfraRules = Rules{
-	Outputs: []Aggregation{InfraAvailability, InfraNonDegraded, InfraUpToDate, InfraSynced, InfraDeleting},
+	Outputs: []Rule{InfraAvailability, InfraNonDegraded, InfraUpToDate, InfraSynced, InfraDeleting},
 }
 
 // InfraProfile optionally binds rules for callers that prefer a short application-specific facade.
@@ -580,9 +580,9 @@ func (InfraInitialization) Derive(parent Object, now time.Time) []metav1.Conditi
 
 // LocalChecks selects Infra's local-only prefix policy for exactly one named output.
 // Additional local types require explicit selection; they do not change other packages' rules.
-func LocalChecks(typ string) Aggregation {
+func LocalChecks(typ string) Rule {
 	output := ConditionType{Type: typ, Polarity: TrueIsGood}
-	return Aggregation{
+	return Rule{
 		Output:     output,
 		Parent:     LocalOnly{LocalBaseFirst: LocalBaseFirst{Base: output, Classifier: InfraClassification}},
 		Local:      PrefixedChecks{Prefix: typ, Polarity: TrueIsGood, Classifier: InfraClassification},
@@ -592,9 +592,9 @@ func LocalChecks(typ string) Aggregation {
 	}
 }
 
-// Aggregate only injects the facade's rules into the generic resource-level operation.
-func (p InfraProfile) Aggregate(parent Conditioned, children map[string]Object, local ...metav1.Condition) (bool, error) {
-	return Aggregate(parent, children, p.Rules, local...)
+// ApplyRules only injects the facade's rules into the generic resource-level operation.
+func (p InfraProfile) ApplyRules(parent Conditioned, children map[string]Object, local ...metav1.Condition) (bool, error) {
+	return ApplyRules(parent, children, p.Rules, local...)
 }
 
 // Evaluate only injects the facade's rules into generic pure evaluation.

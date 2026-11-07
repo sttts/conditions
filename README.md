@@ -1,169 +1,213 @@
 # Conditions
 
-Kubernetes Condition aggregation and diagnostic promotion for Go.
+Composable Kubernetes Condition schemas and aggregation for Go. Requires Go 1.25+.
 
-Controllers often need to combine their own Conditions with those of dependent resources. This package provides a shared evaluator with explicit rules for selecting observations, interpreting status and reasons, choosing an aggregate result, and presenting its causes.
-
-The caller supplies existing resource objects and already-computed local Conditions. Resource selection, reconciliation, and status persistence stay with the caller.
-
-## Usage
-
-The module is `github.com/sttts/conditions` and currently requires Go 1.25 or newer.
-
-```sh
-go get github.com/sttts/conditions
-```
-
-The main entry point applies Conditions to the supplied parent in memory:
+A provider publishes a **Schema** describing its Conditions and their polarities and reason
+classification. A consumer references that schema and translates its observations using a
+set of optional Go helpers. `Define` constructs the aggregation once and publishes its output schema for
+the next consumer. There is no registry or universal vocabulary of semantic kinds.
 
 ```go
-changed, err := conditions.Aggregate(parent, children, rules, localConditions...)
-```
-
-- `parent` implements `conditions.Conditioned`: standard metadata getters, `GetConditions() []metav1.Condition`, and `SetConditions([]metav1.Condition) bool`.
-- `children` is a `map[string]conditions.Object` of resources selected by the caller. Map keys identify sources in diagnostics.
-- `rules` is a `conditions.Rules` value describing the outputs and their policies.
-- `localConditions` contains the caller's local `metav1.Condition` assertions.
-
-The evaluator merges results with existing Conditions, then calls the native setter with the complete desired slice. The setter reports whether the stored Conditions changed; `Aggregate` returns that `bool` directly. Setters must accept identical inputs and report `false` for a no-op. Evaluation errors leave the setter uncalled. The package performs no API-server writes.
-
-### A controller boundary
-
-Suppose the controller has already read an application object (`parent`) and its database dependency (`database`). Its local checks pass, while the database reports `Ready=False`, reason `Provisioning`, and message `waiting for endpoint`.
-
-The following is the controller's aggregation code. It defines one parent output and supplies the existing objects to the library:
-
-```go
-func updateReadiness(
-	parent conditions.Conditioned,
-	database conditions.Object,
-	localReady metav1.Condition,
-) (bool, error) {
-	ready := conditions.ConditionType{Type: "Ready", Polarity: conditions.TrueIsGood}
-
-	// Application policy: select child Ready and require all selected children to be ready.
-	policy := readiness{Condition: ready}
-	rules := conditions.Rules{Outputs: []conditions.Aggregation{{
-		Output:    ready,
-		Parent:    conditions.LocalBaseFirst{Base: ready},
-		Children:  policy,
-		Reduction: policy,
-		Messages:  conditions.MultilineMessages{MaxLines: 7},
-	}}}
-
-	// The controller supplies existing objects and its already-computed local Ready assertion.
-	return conditions.Aggregate(parent,
-		map[string]conditions.Object{"database": database},
-		rules,
-		localReady,
-	)
+// In the dependency's package; Resources may be omitted for a global schema.
+var Schema = conditions.Schema{
+    Resources: []conditions.ResourceMatch{conditions.G("database.example.io")},
+    Conditions: map[string]conditions.ConditionSpec{
+        "Available": {Polarity: conditions.TrueIsGood},
+        "Synced":    {Polarity: conditions.TrueIsGood},
+    },
 }
 ```
 
-`readiness` is **application code**, not a library type. This partial example omits its implementation and the resource accessors; both are included in the [complete executable example](example_test.go). The policy selects each child's Ready Condition, treats a missing Ready as Unknown, and combines the selected observations with known bad taking precedence over Unknown and good. It chooses the output reasons and diagnostic summary.
-
-The library supplies `LocalBaseFirst`, polarity normalization, deterministic child ordering, output metadata, message formatting, and the final setter call. Here `LocalBaseFirst` preserves a bad local Ready assertion; when the local assertion is good, child readiness participates. The local Ready argument supplies the base for this output on each call.
-
-For the already-computed local result:
+In the consuming application:
 
 ```go
-localReady := metav1.Condition{
-    Type: "Ready", Status: metav1.ConditionTrue, Reason: "LocalChecksPassed",
-}
-changed, err := updateReadiness(parent, database, localReady)
+var Aggregation = conditions.Define(conditions.Definition{
+    Resources: []conditions.ResourceMatch{conditions.GK("apps.example.io", "Application")},
+    Outputs: []conditions.OutputDefinition{
+        conditions.Output("Ready", conditions.ConditionSpec{Polarity: conditions.TrueIsGood}),
+        conditions.Output("Synced", conditions.ConditionSpec{Polarity: conditions.TrueIsGood}).Local(),
+    },
+    Children: []conditions.ChildBinding{
+        conditions.Child(database.Schema, conditions.Classify(
+            conditions.Map("Available", "Ready").
+                Escalate(conditions.WaitingForHuman, conditions.Reason("InvalidConfiguration")),
+        )),
+    },
+})
+
+// Publish exactly the contract produced by this aggregation.
+var Schema = Aggregation.Schema()
 ```
 
-The complete example prints:
+The controller's invocation is fixed:
+
+```go
+changed := conditions.Aggregate(parent, children, Aggregation, localConditions...)
+// children: map[string]conditions.Object; keys are diagnostic names.
+
+changed = conditions.AggregateSlice(parent, childSlice, Aggregation, localConditions...)
+// childSlice: []conditions.Object; diagnostics use stable positional names "0", "1", ...
+```
+
+`localConditions` are ordinary `metav1.Condition` assertions, not rule configuration.
+Both calls stage the complete result, apply it once through the parent's setter, and return
+its change flag. They do not query Kubernetes or persist status. Existing unrelated
+Conditions remain intact. Repeated equivalent observations do not update transition times.
+
+The [executable example](define_example_test.go) includes resource adapters and prints:
 
 ```text
-changed=true, Ready=False, reason=ChildrenNotReady
-Required children are not ready:
+changed: true
+False ConditionsNotSatisfied
+Conditions are not satisfied:
   database: waiting for endpoint
-same observations: changed=false
+same observations: false
 ```
 
-The parent now contains the derived Ready Condition. Its other Condition types are retained, and the output's observed generation comes from the parent. The controller handles `err` and persists the parent's status when `changed` is true. Repeating the call with the same observations reports no change. Discovery and persistence are outside the library.
+## Classification and reuse
 
-### Pure evaluation
-
-For a pure evaluation, use the same arguments with `Evaluate`:
-
-```go
-desiredConditions, err := conditions.Evaluate(parent, children, rules, localConditions...)
-```
-
-Resources with another Condition representation can use an adapter. The examples include adapters for native OpenShift and Crossplane types.
-
-### Setters without a change flag
-
-For objects with `SetConditions([]metav1.Condition)` returning nothing, such as Cluster API resources, wrap the parent:
-
-```go
-changed, err := conditions.Aggregate(
-    conditions.WithChangeDetection(parent),
-    children, rules, localConditions...,
-)
-```
-
-`WithChangeDetection` copies the current Conditions before invoking the wrapped setter and compares them with the stored Conditions afterward using Kubernetes semantic equality. This handles setters that update a slice in place or normalize their input. It tracks changes to Conditions only. Native boolean setters provide their own change detection.
-
-## Rules and semantics
-
-`Rules.Outputs` explicitly selects output aggregations for one boundary from children to parent. Each aggregation composes selectors, local precedence, reduction, and message formatting through Go interfaces. Rules are ordinary Go data; custom policies are ordinary Go implementations. Output-list order is not evaluation order.
-
-### Choose rules from independent packages
-
-Providers export `Aggregation` values, constructors, or `[]Aggregation` bundles. Callers select only what they need; there is no registration or central profile extension. For example, combine Infra's **local reconciliation** policy with Crossplane's **child readiness** policy:
-
-```go
-// c = github.com/sttts/conditions
-// lifecycle = github.com/sttts/conditions/examples/infra
-// crossplane = github.com/sttts/conditions/examples/crossplane
-rules, err := c.Compose([]c.Aggregation{
-    lifecycle.InfraSynced,
-    crossplane.ReadinessRule(),
-})
-if err != nil {
-    return false, err
-}
-return c.Aggregate(parent, children, rules, localSynced)
-```
-
-This exact controller boundary and a recovery/idempotence test run in the [cross-module example](examples/crossplane/compose_external_test.go). No unselected Infra axes are enabled. A third-party package supplies the same public Go values and interfaces; it does not need to modify the core. [Two independent provider fixtures](provider_contract_test.go) also exercise selection without importing one another.
-
-`Compose(groups ...[]Aggregation)` returns validated `Rules`. It allocates its own output slice; embedded policy values/configuration still follow ordinary Go shallow-copy semantics and should be treated as immutable. Set `rules.Now` on the assembled rules to inject a clock. Direct `Rules{Outputs: ...}` construction remains supported and is validated on every evaluation.
-
-Composition has explicit contracts:
-
-- **One owner per type**, including derived outputs. Duplicate definitions, missing providers, dependency cycles, incomplete rules, and mismatched defaults fail before evaluation. There is no silent override order.
-- **Explicit current-result reads.** `Aggregation.Requires` names selected primary or derived Condition types. Each rule sees previous persisted Conditions, supplied unowned local checks, and only its named dependencies' newly computed values. Unrelated new outputs and transitive dependencies do not leak into its view.
-- **Explicit derivation ownership.** `Derivation.Outputs()` reserves its types. Local arguments cannot overwrite them. Undeclared/repeated derived writes fail without calling the setter. Sibling derivations do not see one another's new results.
-- **Explicit activation.** An output runs only with a supplied local base or declared default. A dependency whose provider abstains or has no base leaves the previous value readable (or missing/Unknown); dependencies do not assert freshness or success.
-- **Local assertions are unambiguous.** Duplicate local types are errors. Unowned local Conditions are copied, not interpreted by a profile-wide fallback. Existing unowned parent Conditions remain intact.
-
-Policies remain ordinary read-only Go implementations, not sandboxed code. They must be pure and deterministic; shared rules/objects must not be mutated concurrently. Single-output `Aggregation.Evaluate` remains a low-level primitive: its caller supplies the view/sequencing and it does not run the composition plan or derivations.
-
-### Migrating the experimental API
-
-`Rules.LocalFirst`, `UnmappedLocal`, `IgnoreLocal`, and the root `LocalEvaluator` interface are removed. Local precedence is each rule's policy; current-output ordering uses `Requires`; ignored derived inputs use declared ownership. To use Infra's local-only prefix policy for another type, select `lifecycle.LocalChecks("Custom")` explicitly instead of installing a catch-all evaluator. `InfraNonDegraded` requires the selected availability/initialization provider; `InfraUpToDate` requires initialization. Missing selections are errors, not automatically enabled policies.
-
-Existing Condition entries retain their slice order; new entries have deterministic ordering, not the old local-first insertion order. Condition identity is its type. The Infra semantic/message/metadata fixtures and repeated-call change assertions remain exercised.
-
-The evaluator keeps these concepts separate:
-
-| Concept | Purpose |
+| DSL | Meaning |
 | --- | --- |
-| Assessment | Normalize an observation to `Good`, `Bad`, or `Unknown`. |
-| Polarity | Declare whether True or False means good, independently for inputs and outputs. |
-| Escalation | Distinguish ordinary bad state, `WaitingForHuman`, and `Failed` according to configured reason classification. |
-| Propagation and reduction | Decide which observations participate and which contribution takes precedence. |
-| Presentation | Render causes without letting diagnostic text determine semantic classification. |
+| `Classify(Map("Available", "Ready"))` | Translate a foreign schema explicitly. Only mapped sources participate; additions to the provider schema are harmless. |
+| `Identity` | Map the intersection of names with equal semantic meaning; each schema supplies its own polarity. |
+| `Map(...).When(Status(metav1.ConditionFalse))` | Include only matching observations. |
+| `Map(...).Escalate(WaitingForHuman, Reason("InvalidConfiguration"))` | Override escalation for matching **bad** observations. |
+| `Output("Synced", spec).Local()` | Require an explicit local assertion; children cannot set it. |
+| `Output("Ready", spec).Messages(MultilineMessages{})` | Select diagnostic formatting independently of semantics. |
 
-For example, the same normalized bad result can be encoded as `Ready=False` or `Degraded=True`. A sync Condition has no special meaning unless a policy assigns it one. Failure escalation does not itself impose a terminal lifecycle.
+A source may map to several targets. Duplicate source/target mappings are rejected: put
+reason-specific overrides on one mapping. Overrides are first-match, in declaration order;
+without an override, the source schema's classifier applies. Good/Unknown observations
+never acquire a failure escalation. `When` controls participation, not output status.
+Unmapped conditions do not participate, whether or not the source schema declares them.
+For exhaustive integration checks, set `Classification.RequireAll`; then every declared
+source must be mapped or explicitly ignored. `Identity` maps names shared with the output
+schema and asserts their semantic compatibility.
 
-One call evaluates one resource boundary. Passing its resulting Conditions into another call composes multiple levels. The package does not discover or traverse an ownership hierarchy.
+The default reduction is `All`: Bad dominates Unknown, which dominates Good. No contributing
+observations produces Unknown. Among bad observations, Failed dominates WaitingForHuman,
+then ordinary bad. A bad or unknown local base takes precedence over children. The generated
+reasons are published in `Aggregation.Schema()` so escalation survives another aggregation
+level. Custom reducers publish their reason interpretation in the same output
+definition through `ConditionSpec.Reasons`. A `Classifier` interprets bad-condition reasons;
+`Classification` translates child vocabulary into parent outputs.
 
-See [DESIGN.md](DESIGN.md) for the full API, worked configurations, composition tests, and open decisions.
+Within a project, reference the same published schema with `Child(project.Schema, Identity)`.
+The aggregation still decides which outputs are local and which consume child contributions.
+Identity is an explicit assertion of semantic compatibility; matching names alone do not
+establish that compatibility across unrelated providers.
+
+## Resource scopes and filtering
+
+Schemas can declare GVK, GV, G, or GK scopes, or be global. The aggregation can restrict a
+particular use of a global schema:
+
+```go
+conditions.Child(project.Schema, conditions.Identity).
+    For(conditions.GK("workers.example.io", "Worker"))
+```
+
+| Scope | Matches |
+| --- | --- |
+| `GVK("example.io", "v1", "Worker")` | One group/version/kind |
+| `GV("example.io", "v1")` | Every kind in one group/version |
+| `GK("example.io", "Worker")` | Every version of one group/kind |
+| `G("example.io")` | Every version/kind in one group |
+| `G("")` | The core API group, **not** a wildcard |
+| Omitted `Resources`, `ResourceMatch{}`, or `GVK("", "", "")` | Global |
+
+`For` must narrow the published scope. The most specific matching binding wins as a whole;
+fallback mappings are not merged. Equal or incomparable overlapping bindings (for example
+GV and GK) are rejected at definition time. Children outside all bindings are filtered out.
+
+Scoped matching reads the object's `GetObjectKind().GroupVersionKind()`. Typed objects often
+have empty TypeMeta after client reads; supply their known GVK with
+`conditions.WithGVK(child, gvk)` when necessary. This wrapper retains the original conditions
+and metadata; it performs no scheme lookup. Only a global binding accepts objects without
+complete GVK. Map keys never influence schema selection.
+
+## Domain-specific aggregation
+
+`Definition`, `OutputDefinition`, `ChildBinding`, `Classification`, `Mapping`, and
+`ResourceMatch` are public Go structs. Helpers construct these exact values; no closed
+option interface or DSL interpreter sits between Go and the evaluator. For example:
+
+```go
+// These declare the same mapping.
+mapping := conditions.Map("Available", "Ready").When(conditions.Reason("Serving"))
+mapping = conditions.Mapping{
+    Source: "Available", Target: "Ready",
+    Predicate: func(value metav1.Condition) bool { return value.Reason == "Serving" },
+}
+```
+
+An output owns its name, `Spec`, and derivation. There is no separate output schema to keep
+in sync, and no `.Using(rule)` bridge. `Define` derives the published schema from the outputs.
+Ordinary loops and functions can assemble a definition or share output values across consumers.
+`Definition.Now` supplies an optional clock.
+
+Use `OutputDefinition.Reduction`, `Parent`, `LocalChecks`, `Format`, and `Generation` for
+custom behavior. `ChildSelectorFunc`, `LocalSelectorFunc`, `ReducerFunc`, and `ClassifierFunc`
+accept ordinary Go snippets wherever defining a separate type would add little value:
+
+```go
+output := conditions.OutputDefinition{
+    Name: "Ready",
+    Spec: conditions.ConditionSpec{Polarity: conditions.TrueIsGood},
+    Children: conditions.ChildSelectorFunc(func(parent, child conditions.Object) []conditions.Contribution {
+        if parent.GetDeletionTimestamp() != nil { return nil }
+        return selectDatabaseHealth(parent, child) // ordinary project Go code
+    }),
+    Reduction: databaseReadiness{}, // or conditions.ReducerFunc(...)
+}
+```
+
+By default, child selection uses the declared schema bindings. An output's custom `Children`
+selector instead reads the original objects and owns their interpretation; it still receives
+only children admitted by the binding scopes. Use this for domain logic reading several
+conditions or parent lifecycle state. `Map(...).Select(selector)` offers the same Go extension
+for a particular mapping, with its `When` and escalation overrides applied afterward.
+A global `Child(schema, Classify())` can admit objects exclusively for custom selectors.
+
+`Derived` and `DerivedConditions` attach additional owned conditions and their published
+contracts to the output that produces them; dependencies remain explicit in `Requires`.
+Nil `Parent`, `Reduction`, and `Format` select the standard behavior. A custom parent policy
+owns its missing-base convention; supply `DefaultBase` if it should run without a local base.
+`LocalOnly` disables child contributions and, by default, requires a local assertion.
+
+The three example modules expose `Aggregation` and `Schema` globals:
+
+- **Crossplane:** declarative Ready mapping, local Synced, native Go reducer and message policy.
+- **OpenShift:** suffix-family input schema, identity classification, native union reducer/messages.
+- **Infra:** direct Go lifecycle selectors and reducers, including derived Initialized.
+
+The [cross-module example](examples/crossplane/schema_external_test.go) consumes Infra and
+Crossplane schemas, filters by resource identity, maps both to application Ready, then uses
+that application's published schema in a further aggregation with Identity.
+
+## Validation and extension contracts
+
+`Define` validates programmer configuration and panics on errors; use it in package variables
+or during startup. `Aggregate`/`AggregateSlice` return only `bool`: invalid caller input such as
+duplicate local assertions also panics **before the setter runs**, never masquerading as
+`changed=false`. Missing conditions and Unknown are normal observations. For returned
+runtime errors and pure evaluation, use `EvaluateAggregation`.
+
+Definitions snapshot schema maps, scopes, mappings, bases and rule slices. Custom classifiers,
+selectors, reducers, derivations, formatters and clock callbacks must be pure/read-only and
+safe to share. Their internal mutable state cannot be deep-cloned by the library.
+`Schema()` returns a separate map/slice copy. Treat published global definitions as immutable.
+
+The earlier low-level API remains available as `Compose`, `Rules`, `Rule`, `Evaluate`, and
+`ApplyRules`. This experimental migration renames the old per-output `Aggregation` to `Rule`
+and the old `(bool, error)` `Aggregate` to `ApplyRules`.
+
+## Resource adapters
+
+Parents implement `Conditioned`: metadata getters, `GetConditions() []metav1.Condition`, and
+`SetConditions([]metav1.Condition) bool`. Children implement the read-only `Object` interface.
+For native setters without a change flag, use `conditions.WithChangeDetection(parent)`.
+The examples include native Crossplane and OpenShift representation adapters.
 
 ## Message formats
 

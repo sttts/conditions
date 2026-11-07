@@ -15,7 +15,7 @@ import (
 // It rejects invalid definitions and missing or cyclic dependencies before use.
 // The returned slice is new; policy implementations must be pure and safe to share.
 // Set the returned Rules.Now to inject a clock for the complete evaluation.
-func Compose(groups ...[]Aggregation) (Rules, error) {
+func Compose(groups ...[]Rule) (Rules, error) {
 	rules := Rules{}
 	for _, group := range groups {
 		rules.Outputs = append(rules.Outputs, group...)
@@ -27,8 +27,8 @@ func Compose(groups ...[]Aggregation) (Rules, error) {
 }
 
 // plan validates definitions even when no local base will activate them.
-func plan(rules Rules) ([]Aggregation, map[string]string, error) {
-	definitions := make(map[string]Aggregation, len(rules.Outputs))
+func plan(rules Rules) ([]Rule, map[string]string, error) {
+	definitions := make(map[string]Rule, len(rules.Outputs))
 	owners := make(map[string]string, len(rules.Outputs))
 	for _, rule := range rules.Outputs {
 		name := rule.Output.Type
@@ -63,7 +63,7 @@ func plan(rules Rules) ([]Aggregation, map[string]string, error) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	var ordered []Aggregation
+	var ordered []Rule
 	state := map[string]uint8{}
 	var visit func(string) error
 	visit = func(name string) error {

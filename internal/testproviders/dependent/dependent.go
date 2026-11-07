@@ -10,8 +10,8 @@ import (
 )
 
 // Rules explicitly requires Ready from any selected provider, not a concrete package.
-func Rules() []c.Aggregation {
-	return []c.Aggregation{{Output: c.ConditionType{Type: "Observed"}, Requires: []string{"Ready"}, DefaultBase: &metav1.Condition{Type: "Observed"}, Parent: c.ChildrenOnly{}, Local: ready{}, Reduction: observation{}, Messages: c.BoundedMessages{}}}
+func Rules() []c.Rule {
+	return []c.Rule{{Output: c.ConditionType{Type: "Observed"}, Requires: []string{"Ready"}, DefaultBase: &metav1.Condition{Type: "Observed"}, Parent: c.ChildrenOnly{}, Local: ready{}, Reduction: observation{}, Messages: c.BoundedMessages{}}}
 }
 
 type ready struct{}

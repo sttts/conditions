@@ -1,6 +1,15 @@
 # Lifecycle profile and conformance tests
 
-This example accompanies [DESIGN.md](../../DESIGN.md). Its [flat rules and lifecycle policies](infra.go) exercise initialization, availability, degradation, updates, deletion, and escalation through the shared root `conditions` package. The optional profile facade only injects rules into generic `Aggregate`. [Type aliases](conditions_aliases.go) retain the conformance tests' local names for the shared API types.
+## Schema API
+
+This package publishes `Aggregation` and `Schema = Aggregation.Schema()` as ordinary global
+values. Consumers import `Schema`, bind it using `conditions.Child`, and choose explicit
+`Classify` mappings or `Identity`. See [schema.go](schema.go) for the definition and the
+[root README](../../README.md) for the API. Each output declares its contract and derivation together. Domain logic is ordinary Go;
+the low-level rules below remain the independent reference for compatibility tests.
+
+
+This example accompanies [DESIGN.md](../../DESIGN.md). Its [flat rules and lifecycle policies](infra.go) exercise initialization, availability, degradation, updates, deletion, and escalation through the shared root `conditions` package. The optional profile facade only injects rules into generic `ApplyRules`. [Type aliases](conditions_aliases.go) retain the conformance tests' local names for the shared API types.
 
 ## Condition setup
 
@@ -10,7 +19,7 @@ One call combines existing parent Conditions, independently computed local asser
 
 | Input | Where it comes from | How the profile uses it |
 | --- | --- | --- |
-| Local Available, NonDegraded, UpToDate, and Synced | The `Aggregate` call's local arguments | Bases for the corresponding outputs; a bad local base takes precedence. |
+| Local Available, NonDegraded, UpToDate, and Synced | The `ApplyRules` call's local arguments | Bases for the corresponding outputs; a bad local base takes precedence. |
 | Local checks such as AvailableHealth or SyncedConfig | Existing parent Conditions | Bad entries under an output's type prefix contribute local diagnostics. The exact base type is excluded from prefix selection. |
 | Parent Initialized | Existing parent Conditions, then the availability rule's derivation | A persistent bring-up latch; once True, it stays True. Supplying it as a local argument does not replace the derivation. |
 | Child Available, Initialized, NonDegraded, UpToDate, and Synced | Each supplied child's Conditions | Serving-state diagnoses, with separate propagation gates for each output. |
@@ -34,7 +43,7 @@ Its output list selects Available, NonDegraded, UpToDate, Synced, and Deleting; 
 Select a coherent subset, or combine it with another package's outputs:
 
 ```go
-rules, err := c.Compose([]c.Aggregation{
+rules, err := c.Compose([]c.Rule{
     lifecycle.InfraAvailability, // also owns Initialized
     lifecycle.InfraUpToDate,    // requires that selected Initialized provider
     lifecycle.LocalChecks("Custom"),
@@ -69,7 +78,7 @@ The Available entry uses that classification and the two initialization gates ex
 v := lifecycle.InfraConditions
 existing := c.ExistingChildren{Parent: v.Initialized, Child: v.Initialized}
 beforeInit := c.BeforeInitialized{Parent: v.Initialized}
-availability := c.Aggregation{
+availability := c.Rule{
     Output:  v.Available,
     Derived: []c.Derivation{lifecycle.InfraInitialization{}},
     Parent: c.LocalBaseFirst{
@@ -102,7 +111,7 @@ The profile selects the root `MultilineMessages` format. Its explicit `PreserveB
 The [executable invocation](infra_test.go) starts with an initialized parent and a good AvailableHealth check. A newly added child is not initialized, reports Available=False/DependencyFailed, Synced=False/ProviderError, and UpToDate=False/Updating. The controller's own bases are good:
 
 ```go
-changed, err := c.Aggregate(parent,
+changed, err := c.ApplyRules(parent,
     map[string]c.Object{"Worker": worker},
     lifecycle.InfraRules,
     metav1.Condition{Type: "Synced", Status: metav1.ConditionTrue, Reason: "Synced"},
@@ -136,14 +145,14 @@ The tests include the existing 27 semantic fixtures and 17 summary fixtures, plu
 
 | Reference coverage | Cases |
 | --- | ---: |
-| Aggregation, including metadata, change reporting, and idempotence | 74 |
+| Rule, including metadata, change reporting, and idempotence | 74 |
 | Local sub-condition reduction | 16 |
 | Literal aggregate messages | 10 |
 | Multiline examples A-F | 6 |
 | Inline presentation | 11 |
 | Total ported reference cases | 117 |
 
-See [reference_tests.json](reference_tests.json) for provenance and file hashes. Test case names and expected behavior remain intact. The aggregate suite separates semantic checks from message checks. Aggregate cases assert all metadata. Local-only cases check type, status, reason, message, and the timestamp supplied to the public evaluator. Runtime object fixtures use standard metadata/getter/setter interfaces and a fixed clock. URL fixtures use `example.invalid` consistently in inputs and expected results.
+See [reference_tests.json](reference_tests.json) for provenance and file hashes. Test case names and expected behavior remain intact. The aggregate suite separates semantic checks from message checks. ApplyRules cases assert all metadata. Local-only cases check type, status, reason, message, and the timestamp supplied to the public evaluator. Runtime object fixtures use standard metadata/getter/setter interfaces and a fixed clock. URL fixtures use `example.invalid` consistently in inputs and expected results.
 
 The profile selects the root package's `MultilineMessages` through `Formatter`. [multiline_test.go](multiline_test.go) checks its hierarchical, condensed, and inline output through the public interface. The implementation and [format contract](../../FORMATS.md) belong to the library. `BoundedMessages` is the separate opaque-text format.
 

@@ -29,7 +29,7 @@ type (
 	Cause             = c.Cause
 	Contribution      = c.Contribution
 	Outcome           = c.Outcome
-	Aggregation       = c.Aggregation
+	Rule              = c.Rule
 	ReasonSuffix      = c.ReasonSuffix
 	ReasonClassifier  = c.ReasonClassifier
 	Always            = c.Always
@@ -59,7 +59,7 @@ const (
 )
 
 var (
-	Aggregate = c.Aggregate
-	Evaluate  = c.Evaluate
-	Lookup    = c.Lookup
+	ApplyRules = c.ApplyRules
+	Evaluate   = c.Evaluate
+	Lookup     = c.Lookup
 )

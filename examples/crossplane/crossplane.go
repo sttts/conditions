@@ -106,8 +106,8 @@ var ready = c.ConditionType{Type: string(xpv1.TypeReady), Polarity: c.TrueIsGood
 
 // ReadinessRule supplies independently selectable readiness policy and opaque diagnostics.
 // Synced remains an independent local assertion; it is neither required nor derived.
-func ReadinessRule() c.Aggregation {
-	return c.Aggregation{
+func ReadinessRule() c.Rule {
+	return c.Rule{
 		Output: ready, Parent: c.LocalBaseFirst{Base: ready}, Children: ReadyChildren{}, Reduction: Readiness{},
 		DefaultBase: &metav1.Condition{Type: string(xpv1.TypeReady), Status: metav1.ConditionTrue, Reason: string(xpv1.ReasonAvailable)},
 		Messages:    c.BoundedMessages{MaxLines: 7},
@@ -115,6 +115,6 @@ func ReadinessRule() c.Aggregation {
 }
 
 // CrossplaneRules selects the example's readiness rule without a separate evaluation path.
-var CrossplaneRules = c.Rules{Outputs: []c.Aggregation{ReadinessRule()}}
+var CrossplaneRules = c.Rules{Outputs: []c.Rule{ReadinessRule()}}
 
 var _ c.Conditioned = Adapter{}

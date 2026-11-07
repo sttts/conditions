@@ -48,7 +48,7 @@ func TestNativeReadinessReasons(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			parent, child := resource(), resource(test.values...)
 			before := append([]xpv1.Condition(nil), child.Status.Conditions...)
-			changed, err := c.Aggregate(parent, map[string]c.Object{"database": child}, fixedRules())
+			changed, err := applyDefined(t, parent, map[string]c.Object{"database": child}, fixedRules())
 			if err != nil || !changed {
 				t.Fatalf("aggregate: %v, %v", changed, err)
 			}
@@ -63,7 +63,7 @@ func TestNativeReadinessReasons(t *testing.T) {
 			if !reflect.DeepEqual(before, child.Status.Conditions) {
 				t.Fatal("mutated child assertions")
 			}
-			if changed, err = c.Aggregate(parent, map[string]c.Object{"database": child}, fixedRules()); err != nil || changed {
+			if changed, err = applyDefined(t, parent, map[string]c.Object{"database": child}, fixedRules()); err != nil || changed {
 				t.Fatalf("not idempotent: %v, %v", changed, err)
 			}
 		})
@@ -75,7 +75,7 @@ func TestSyncedDoesNotInvalidateReady(t *testing.T) {
 		t.Run(string(sync.Reason), func(t *testing.T) {
 			parent := resource()
 			child := resource(xpv1.Available(), sync)
-			_, err := c.Aggregate(parent, map[string]c.Object{"database": child}, fixedRules(), ToCondition(sync))
+			_, err := applyDefined(t, parent, map[string]c.Object{"database": child}, fixedRules(), ToCondition(sync))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -86,7 +86,7 @@ func TestSyncedDoesNotInvalidateReady(t *testing.T) {
 				t.Fatalf("lost local Synced: %#v", value)
 			}
 			parentWithoutSync := resource()
-			if _, err = c.Aggregate(parentWithoutSync, map[string]c.Object{"database": child}, fixedRules()); err != nil {
+			if _, err = applyDefined(t, parentWithoutSync, map[string]c.Object{"database": child}, fixedRules()); err != nil {
 				t.Fatal(err)
 			}
 			if _, exists := c.Lookup(parentWithoutSync, "Synced"); exists {
@@ -101,7 +101,7 @@ func TestOrderingAndRecovery(t *testing.T) {
 	a := resource(xpv1.Creating().WithMessage("creating database"))
 	z := resource(xpv1.Unavailable().WithMessage("endpoint unavailable"))
 	children := map[string]c.Object{"z": z, "a": a, "unknown": resource()}
-	_, err := c.Aggregate(parent, children, fixedRules())
+	_, err := applyDefined(t, parent, children, fixedRules())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestOrderingAndRecovery(t *testing.T) {
 	children["unknown"] = resource(xpv1.Available())
 	rules := fixedRules()
 	rules.Now = func() time.Time { return epoch.Add(time.Minute) }
-	changed, err := c.Aggregate(parent, children, rules)
+	changed, err := applyDefined(t, parent, children, rules)
 	if err != nil || !changed {
 		t.Fatalf("recovery: %v, %v", changed, err)
 	}
@@ -131,7 +131,7 @@ func TestOrderingAndRecovery(t *testing.T) {
 func TestLocalReadinessPrecedence(t *testing.T) {
 	for _, local := range []xpv1.Condition{xpv1.Deleting(), {Type: xpv1.TypeReady, Status: corev1.ConditionUnknown, Reason: "Observing", Message: "local observation incomplete"}} {
 		parent := resource()
-		_, err := c.Aggregate(parent, map[string]c.Object{"database": resource(xpv1.Available())}, fixedRules(), ToCondition(local))
+		_, err := applyDefined(t, parent, map[string]c.Object{"database": resource(xpv1.Available())}, fixedRules(), ToCondition(local))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -171,7 +171,7 @@ func TestForeignMessagesStayOpaqueAndBounded(t *testing.T) {
 	message := "failed children:\n  native-looking: do not parse\n" + strings.Repeat("more detail\n", 12)
 	child := resource(xpv1.Unavailable().WithMessage(message))
 	parent := resource()
-	_, err := c.Aggregate(parent, map[string]c.Object{"database": child}, fixedRules())
+	_, err := applyDefined(t, parent, map[string]c.Object{"database": child}, fixedRules())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestForeignMessagesStayOpaqueAndBounded(t *testing.T) {
 func TestReservedHealthyIsNotAnInput(t *testing.T) {
 	parent := resource()
 	child := resource(xpv1.Available(), xpv1.Condition{Type: xpv1.TypeHealthy, Status: corev1.ConditionFalse, Reason: "Reserved"})
-	_, err := c.Aggregate(parent, map[string]c.Object{"database": child}, fixedRules())
+	_, err := applyDefined(t, parent, map[string]c.Object{"database": child}, fixedRules())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,11 +196,8 @@ func TestReservedHealthyIsNotAnInput(t *testing.T) {
 func Example() {
 	parent := resource()
 	child := resource(xpv1.Creating().WithMessage("waiting for database"))
-	_, err := c.Aggregate(parent, map[string]c.Object{"database": child}, CrossplaneRules,
+	c.Aggregate(parent, map[string]c.Object{"database": child}, Aggregation,
 		ToCondition(xpv1.ReconcileSuccess()))
-	if err != nil {
-		panic(err)
-	}
 	for _, typ := range []string{"Ready", "Synced"} {
 		value, _ := c.Lookup(parent, typ)
 		fmt.Println(value.Type, value.Status, value.Reason)

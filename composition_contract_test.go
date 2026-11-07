@@ -18,8 +18,8 @@ func (abstain) Before(c.Object, map[string]c.Object, metav1.Condition) (*c.Outco
 }
 func (abstain) IncludeChildren(metav1.Condition) bool { return false }
 
-func observing(name string, requires ...string) c.Aggregation {
-	return c.Aggregation{Output: c.ConditionType{Type: name}, DefaultBase: &metav1.Condition{Type: name}, Requires: requires, Parent: c.ChildrenOnly{}, Local: selectReady{}, Reduction: readReady{}, Messages: c.BoundedMessages{}}
+func observing(name string, requires ...string) c.Rule {
+	return c.Rule{Output: c.ConditionType{Type: name}, DefaultBase: &metav1.Condition{Type: name}, Requires: requires, Parent: c.ChildrenOnly{}, Local: selectReady{}, Reduction: readReady{}, Messages: c.BoundedMessages{}}
 }
 
 func TestDependenciesDoNotImplyFreshnessOrSuccess(t *testing.T) {
@@ -38,11 +38,11 @@ func TestDependenciesDoNotImplyFreshnessOrSuccess(t *testing.T) {
 					parent.conditions = []metav1.Condition{{Type: "Ready", Status: metav1.ConditionFalse, Reason: "Previous"}}
 					want = metav1.ConditionFalse
 				}
-				rules, err := c.Compose([]c.Aggregation{observing("Observed", "Ready"), producer})
+				rules, err := c.Compose([]c.Rule{observing("Observed", "Ready"), producer})
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err := c.Aggregate(parent, nil, rules); err != nil {
+				if _, err := c.ApplyRules(parent, nil, rules); err != nil {
 					t.Fatal(err)
 				}
 				value, _ := c.Lookup(parent, "Observed")
@@ -59,11 +59,11 @@ func TestTransitiveAndUnprocessedBaseResultsDoNotLeak(t *testing.T) {
 	middle := observing("Stage", "Ready")
 	final := observing("Observed", "Stage") // does NOT declare Ready
 	parent := &object{conditions: []metav1.Condition{{Type: "Ready", Status: metav1.ConditionFalse, Reason: "Previous"}}}
-	rules, err := c.Compose([]c.Aggregation{final, middle, producer})
+	rules, err := c.Compose([]c.Rule{final, middle, producer})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Aggregate(parent, nil, rules, metav1.Condition{Type: "Ready", Status: metav1.ConditionTrue, Reason: "Local"}); err != nil {
+	if _, err := c.ApplyRules(parent, nil, rules, metav1.Condition{Type: "Ready", Status: metav1.ConditionTrue, Reason: "Local"}); err != nil {
 		t.Fatal(err)
 	}
 	if value, _ := c.Lookup(parent, "Stage"); value.Status != metav1.ConditionTrue {
@@ -90,7 +90,7 @@ func TestDerivedConflictsAreAtomic(t *testing.T) {
 		producer := rule(c.Outcome{State: c.State{Assessment: c.Good}, Reason: "Ready"})
 		producer.Derived = derivatives
 		parent := &object{}
-		if _, err := c.Aggregate(parent, nil, c.Rules{Outputs: []c.Aggregation{producer}}); err == nil || parent.sets != 0 {
+		if _, err := c.ApplyRules(parent, nil, c.Rules{Outputs: []c.Rule{producer}}); err == nil || parent.sets != 0 {
 			t.Fatalf("derived conflict applied results: err=%v sets=%d", err, parent.sets)
 		}
 	}

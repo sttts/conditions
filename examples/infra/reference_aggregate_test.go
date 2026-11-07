@@ -1468,7 +1468,7 @@ func TestReferenceAggregate(t *testing.T) {
 			for name, child := range tt.children {
 				children[name] = child
 			}
-			changed, err := Aggregate(tt.parent, children, rules, tt.args...)
+			changed, err := applyDefined(t, tt.parent, children, rules, tt.args...)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1487,7 +1487,7 @@ func TestReferenceAggregate(t *testing.T) {
 			if diff := cmp.Diff(expected, actual); diff != "" {
 				t.Errorf("Conditions mismatch (-want +got):\n%s", diff)
 			}
-			changed, err = Aggregate(tt.parent, children, rules, tt.args...)
+			changed, err = applyDefined(t, tt.parent, children, rules, tt.args...)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2055,7 +2055,7 @@ func TestReferenceAggregateMessageFormatting(t *testing.T) {
 			for name, child := range tc.children {
 				children[name] = child
 			}
-			if _, err := Aggregate(tc.parent, children, rules, tc.args...); err != nil {
+			if _, err := applyDefined(t, tc.parent, children, rules, tc.args...); err != nil {
 				t.Fatal(err)
 			}
 			actual, _ := Lookup(tc.parent, tc.conditionType)

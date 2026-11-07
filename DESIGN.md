@@ -9,17 +9,63 @@ Status: experimental design for `github.com/sttts/conditions`. The API is pre-v1
 Implementation details live in the linked Go sources, rather than copied implementations
 in this document. [FORMATS.md](FORMATS.md) specifies the existing message contracts.
 
+## Schema-oriented public API
+
+The controller boundary is now `Aggregate(parent, children, aggregation, local...) bool`,
+with `AggregateSlice` for `[]Object`. `Define` builds an immutable aggregation during startup
+and `Aggregation.Schema()` publishes its output interpretation. The README contains the
+complete user-facing API and executable examples.
+
+A `Schema` declares condition names, polarities, reason classifiers and optional suffix
+families. API scopes are GVK/GV/G/GK, or global when unspecified. Consumer bindings may narrow
+them with `For`; narrower matching bindings replace broader fallbacks. Equal/incomparable
+intersecting bindings are construction errors. Unmatched children do not participate. No
+runtime Scheme or global registry is introduced.
+
+`Classify(Map(...))` translates provider vocabulary to consumer outputs.
+`Identity` explicitly asserts same-name semantic equivalence within a shared vocabulary.
+Classification normalizes source polarity, retains diagnostics, and optionally adjusts
+escalation using first-match Reason/Status predicates. Reduction combines contributions and
+output encoding uses the destination schema's polarity. There are no universal semantic Kinds.
+
+The default `All` reducer exports its own escalation reason interpretation with its output
+schema. Therefore a subsequent consumer can reference that schema without reproducing the
+original reducer. Local-only outputs and contextual Go policies remain explicit. `Definition` and all helper results are open Go structs. Each output declares its contract
+and derivation together; the output schema is generated from these definitions. There is
+no separate schema declaration or rule-reassembly bridge. `ConditionSpec.Reasons` interprets
+bad-condition reasons; `Classification` translates names at the consumer boundary.
+
+Unmapped sources are ignored, allowing additive provider evolution. `RequireAll` is an
+optional exhaustive check. `Identity` maps the intersection of source and output names.
+Domain-specific selectors and reducers can be ordinary Go functions using the function
+adapters, or reusable interface implementations. Output-level `Children` owns contextual
+selection over the admitted child objects; mapping-level `Select` specializes one binding.
+These callbacks are native extension points, not actions in a DSL interpreter.
+
+Configuration errors panic during `Define`. The bool-only application call also panics on
+caller-contract errors, such as duplicate local assertions, before mutation. Observational
+absence/Unknown is represented in conditions. `EvaluateAggregation` exposes pure evaluation
+with returned runtime errors. This choice is explicit: a false change flag never hides an
+error. Custom policy implementations are required to be pure and concurrency-safe.
+
+The low-level machinery below is retained for specialized policy authors and compatibility
+validation. Its former per-output `Aggregation` is now `Rule`; its `(bool,error)` mutating
+entry point is `ApplyRules`. All examples publish globals using the new API. Infra's reference
+aggregate fixtures, Crossplane's native cases, and OpenShift's union truth table also execute
+the schema path and compare complete output fields with the low-level evaluator. Crossplane's
+newly owned local Synced may change initial slice insertion order; comparison is by type.
+
 ## Boundary
 
 A controller supplies existing parent and child objects, local Conditions, and explicitly
 selected rules. The library derives desired Conditions at **one resource boundary**:
 
 ```go
-changed, err := conditions.Aggregate(parent, children, rules, localConditions...)
+changed, err := conditions.ApplyRules(parent, children, rules, localConditions...)
 ```
 
 `Evaluate` has the same arguments and returns the desired slice without a setter.
-`Aggregate` stages evaluation, invokes the native setter once on success, and returns
+`ApplyRules` stages evaluation, invokes the native setter once on success, and returns
 its change flag. Neither operation discovers resources, queries Kubernetes, persists
 status, emits Events, advances status-level observed generation, or owns reconciliation.
 
@@ -30,21 +76,21 @@ modules. A consuming controller need not import any example.
 
 ## Selection and composition
 
-A provider exports `Aggregation` values or ordinary constructors returning them. It may
-also export a `[]Aggregation` bundle. Providers implement the public policy interfaces;
+A provider exports `Rule` values or ordinary constructors returning them. It may
+also export a `[]Rule` bundle. Providers implement the public policy interfaces;
 they do not register with the core or import one another.
 
 The caller selects individual values and/or bundles:
 
 ```go
 rules, err := conditions.Compose(
-    []conditions.Aggregation{lifecycle.InfraSynced},
-    []conditions.Aggregation{crossplane.ReadinessRule()},
+    []conditions.Rule{lifecycle.InfraSynced},
+    []conditions.Rule{crossplane.ReadinessRule()},
 )
 if err != nil {
     return false, err
 }
-return conditions.Aggregate(parent, children, rules, localSynced)
+return conditions.ApplyRules(parent, children, rules, localSynced)
 ```
 
 This is an executable, cross-module controller boundary in
@@ -54,13 +100,13 @@ policy. Neither enables the unselected Infra availability, initialization, degra
 update, or deletion rules. Child reconciliation success cannot repair a local failure;
 child reconciliation failure does not automatically invalidate readiness.
 
-`Compose(groups ...[]Aggregation) (Rules, error)` allocates a new output slice and validates
+`Compose(groups ...[]Rule) (Rules, error)` allocates a new output slice and validates
 the combined selection. It does not add dependencies automatically. Callers can instead
 construct `Rules{Outputs: ...}`; `Evaluate` repeats validation so that this path cannot
 bypass conflicts. `Rules.Now` is invocation-wide clock injection, sampled once per call,
 not a provider policy. Set it on the assembled `Rules`, not on provider bundles.
 
-`Aggregation` still composes the existing concepts:
+`Rule` still composes the existing concepts:
 
 - `Output`: type and polarity of one primary Condition.
 - `DefaultBase`: an explicit base used only when the caller omitted that local type.
@@ -130,7 +176,7 @@ One selection has exactly one writer for each primary or derived Condition type.
 
 Derivations run only after their primary output exists. Each sees that primary result
 and the same dependency/input view; sibling derivations do not see one another's new
-results. A policy requiring additional sequencing should expose another Aggregation
+results. A policy requiring additional sequencing should expose another Rule
 with `Requires`, rather than rely on derivation list order.
 
 Validation cannot prove arbitrary Go implementations correct or prevent them from

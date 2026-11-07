@@ -35,8 +35,8 @@ func (r fixedOutcome) Reduce(metav1.Condition, map[string]c.Object, []c.Contribu
 	return r.outcome
 }
 
-func rule(outcome c.Outcome) c.Aggregation {
-	return c.Aggregation{Output: c.ConditionType{Type: "Ready", Polarity: c.TrueIsGood},
+func rule(outcome c.Outcome) c.Rule {
+	return c.Rule{Output: c.ConditionType{Type: "Ready", Polarity: c.TrueIsGood},
 		Parent: c.ChildrenOnly{}, Reduction: fixedOutcome{outcome}, Messages: c.BoundedMessages{},
 		DefaultBase: &metav1.Condition{Type: "Ready"}}
 }
@@ -59,8 +59,8 @@ func TestOutputMetadataPolicies(t *testing.T) {
 			out := c.Outcome{State: c.State{Assessment: c.Good}, Reason: "Available", Summary: "ready", Copied: test.copied, LastTransitionTime: metav1.NewTime(epoch.Add(-time.Hour))}
 			r := rule(out)
 			r.Generation = test.policy
-			rules := c.Rules{Outputs: []c.Aggregation{r}, Now: func() time.Time { return epoch }}
-			changed, err := c.Aggregate(parent, nil, rules)
+			rules := c.Rules{Outputs: []c.Rule{r}, Now: func() time.Time { return epoch }}
+			changed, err := c.ApplyRules(parent, nil, rules)
 			if err != nil || !changed {
 				t.Fatalf("aggregate: %v, %v", changed, err)
 			}
@@ -69,7 +69,7 @@ func TestOutputMetadataPolicies(t *testing.T) {
 				t.Fatalf("incorrect metadata: %#v", value)
 			}
 			rules.Now = func() time.Time { return epoch.Add(time.Hour) }
-			if changed, err = c.Aggregate(parent, nil, rules); err != nil || changed || parent.sets != 2 {
+			if changed, err = c.ApplyRules(parent, nil, rules); err != nil || changed || parent.sets != 2 {
 				t.Fatalf("unstable metadata: %v, %v, sets=%d", changed, err, parent.sets)
 			}
 		})
@@ -87,7 +87,7 @@ func TestPolarityAndRenderingDoNotChangeClassification(t *testing.T) {
 			r.Output.Polarity = polarity
 			r.Messages = format
 			parent := &object{}
-			_, err := c.Aggregate(parent, nil, c.Rules{Outputs: []c.Aggregation{r}})
+			_, err := c.ApplyRules(parent, nil, c.Rules{Outputs: []c.Rule{r}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -107,7 +107,7 @@ func TestInvalidRulesDoNotAssignPartialResults(t *testing.T) {
 	parent := &object{conditions: []metav1.Condition{{Type: "Custom", Status: metav1.ConditionTrue, Reason: "Keep"}}}
 	before := append([]metav1.Condition(nil), parent.conditions...)
 	r := rule(c.Outcome{State: c.State{Assessment: c.Good}, Reason: "Available"})
-	_, err := c.Aggregate(parent, nil, c.Rules{Outputs: []c.Aggregation{r, r}})
+	_, err := c.ApplyRules(parent, nil, c.Rules{Outputs: []c.Rule{r, r}})
 	if err == nil || parent.sets != 0 || !reflect.DeepEqual(before, parent.conditions) {
 		t.Fatalf("invalid rules mutated parent: err=%v, object=%#v", err, parent)
 	}

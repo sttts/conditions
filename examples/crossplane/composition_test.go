@@ -10,12 +10,12 @@ import (
 )
 
 func TestSelectReadinessRule(t *testing.T) {
-	rules, err := c.Compose([]c.Aggregation{ReadinessRule()})
+	rules, err := c.Compose([]c.Rule{ReadinessRule()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	parent := resource()
-	if _, err := c.Aggregate(parent, nil, rules); err != nil {
+	if _, err := c.ApplyRules(parent, nil, rules); err != nil {
 		t.Fatal(err)
 	}
 	value, _ := c.Lookup(parent, "Ready")

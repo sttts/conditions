@@ -19,14 +19,14 @@ import (
 // updateConditions is the entire controller boundary: choose rules, supply objects,
 // handle the change flag/error, and leave API-server persistence to the reconciler.
 func updateConditions(parent c.Conditioned, children map[string]c.Object, synced metav1.Condition) (bool, error) {
-	rules, err := c.Compose([]c.Aggregation{
+	rules, err := c.Compose([]c.Rule{
 		lifecycle.InfraSynced,      // local reconciliation + Infra's prefix-check policy
 		crossplane.ReadinessRule(), // child readiness + opaque diagnostics
 	})
 	if err != nil {
 		return false, err
 	}
-	return c.Aggregate(parent, children, rules, synced)
+	return c.ApplyRules(parent, children, rules, synced)
 }
 
 func Example_composition() {
@@ -49,7 +49,7 @@ func Example_composition() {
 }
 
 func TestIndependentExampleModulesCompose(t *testing.T) {
-	rules, err := c.Compose([]c.Aggregation{lifecycle.InfraSynced, crossplane.ReadinessRule()})
+	rules, err := c.Compose([]c.Rule{lifecycle.InfraSynced, crossplane.ReadinessRule()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestIndependentExampleModulesCompose(t *testing.T) {
 	child.Status.SetConditions(xpv1.Creating().WithMessage("waiting for database"), xpv1.ReconcileSuccess())
 	children := map[string]c.Object{"database": child}
 	local := crossplane.ToCondition(xpv1.ReconcileError(errors.New("parent update denied")))
-	if changed, err := c.Aggregate(parent, children, rules, local); err != nil || !changed {
+	if changed, err := c.ApplyRules(parent, children, rules, local); err != nil || !changed {
 		t.Fatalf("aggregate: %v %v", changed, err)
 	}
 	if value, _ := c.Lookup(parent, "Ready"); value.Status != metav1.ConditionFalse || value.Reason != "Creating" || value.Message != "Waiting for composed resources:\n  database: waiting for database" {
@@ -68,7 +68,7 @@ func TestIndependentExampleModulesCompose(t *testing.T) {
 	if value, _ := c.Lookup(parent, "Synced"); value.Status != metav1.ConditionFalse || value.Reason != "ReconcileError" {
 		t.Fatalf("child success hid local failure: %#v", value)
 	}
-	if changed, err := c.Aggregate(parent, children, rules, local); err != nil || changed {
+	if changed, err := c.ApplyRules(parent, children, rules, local); err != nil || changed {
 		t.Fatalf("repeat: %v %v", changed, err)
 	}
 	if len(parent.GetConditions()) != 2 {
@@ -76,7 +76,7 @@ func TestIndependentExampleModulesCompose(t *testing.T) {
 	}
 	child.Status.SetConditions(xpv1.Available(), xpv1.ReconcileError(errors.New("child update denied")))
 	local = crossplane.ToCondition(xpv1.ReconcileSuccess())
-	if _, err := c.Aggregate(parent, children, rules, local); err != nil {
+	if _, err := c.ApplyRules(parent, children, rules, local); err != nil {
 		t.Fatal(err)
 	}
 	for _, typ := range []string{"Ready", "Synced"} {

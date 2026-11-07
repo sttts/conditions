@@ -11,7 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func ExampleAggregate() {
+func ExampleApplyRules() {
 	parent := &exampleResource{ObjectMeta: metav1.ObjectMeta{Name: "application", Generation: 7}}
 	database := &exampleResource{ObjectMeta: metav1.ObjectMeta{Name: "database", Generation: 3},
 		Conditions: []metav1.Condition{{Type: "Ready", Status: metav1.ConditionFalse,
@@ -46,7 +46,7 @@ func updateReadiness(
 
 	// Application policy: select child Ready and require all selected children to be ready.
 	policy := readiness{Condition: ready}
-	rules := conditions.Rules{Outputs: []conditions.Aggregation{{
+	rules := conditions.Rules{Outputs: []conditions.Rule{{
 		Output:    ready,
 		Parent:    conditions.LocalBaseFirst{Base: ready},
 		Children:  policy,
@@ -55,7 +55,7 @@ func updateReadiness(
 	}}}
 
 	// The controller supplies existing objects and its already-computed local Ready assertion.
-	return conditions.Aggregate(parent,
+	return conditions.ApplyRules(parent,
 		map[string]conditions.Object{"database": database},
 		rules,
 		localReady,

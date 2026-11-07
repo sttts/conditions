@@ -14,12 +14,21 @@ import (
 	c "github.com/sttts/conditions"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // Operator adapts the native status of an existing OpenShift operator configuration object.
 type Operator struct {
 	metav1.Object
 	Status *operatorv1.OperatorStatus
+}
+
+// GetObjectKind forwards API identity supplied with the native object.
+func (o Operator) GetObjectKind() schema.ObjectKind {
+	if typed, ok := o.Object.(interface{ GetObjectKind() schema.ObjectKind }); ok {
+		return typed.GetObjectKind()
+	}
+	return schema.EmptyObjectKind
 }
 
 // GetConditions translates operator assertions without assigning status-level generation to them.
@@ -178,8 +187,8 @@ var (
 
 // UnionRule supplies one independently selectable operator-status union.
 // It enables no other axes, inertia, local-input handling, or evaluation-wide policy.
-func UnionRule(condition c.ConditionType) c.Aggregation {
-	return c.Aggregation{
+func UnionRule(condition c.ConditionType) c.Rule {
+	return c.Rule{
 		Output: condition, DefaultBase: &metav1.Condition{Type: condition.Type}, Parent: c.ChildrenOnly{},
 		Children: OperatorConditions{condition}, Reduction: OperatorUnion{Condition: condition},
 		Messages: UnionMessages{}, Generation: c.NoObservedGeneration,
@@ -187,7 +196,7 @@ func UnionRule(condition c.ConditionType) c.Aggregation {
 }
 
 // OpenShiftRules selects four independent unions, without enabling inertia by default.
-var OpenShiftRules = c.Rules{Outputs: []c.Aggregation{
+var OpenShiftRules = c.Rules{Outputs: []c.Rule{
 	UnionRule(available), UnionRule(progressing), UnionRule(degraded), UnionRule(upgradeable),
 }}
 

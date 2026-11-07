@@ -23,7 +23,7 @@ func assertion(typ string, status operatorv1.ConditionStatus, reason, message st
 }
 
 func source(values ...operatorv1.OperatorCondition) Operator {
-	operator := &operatorv1.Console{ObjectMeta: metav1.ObjectMeta{Name: "cluster", Generation: 17}}
+	operator := &operatorv1.Console{TypeMeta: metav1.TypeMeta{APIVersion: "operator.openshift.io/v1", Kind: "Console"}, ObjectMeta: metav1.ObjectMeta{Name: "cluster", Generation: 17}}
 	operator.Status.Conditions = values
 	operator.Status.ObservedGeneration = 16
 	return Operator{Object: operator, Status: &operator.Status.OperatorStatus}
@@ -60,6 +60,10 @@ func TestUnion(t *testing.T) {
 					operator := source(test.values...)
 					before := append([]operatorv1.OperatorCondition(nil), operator.Status.Conditions...)
 					selected := (OperatorConditions{typ}).Select(nil, operator)
+					rules := c.Rules{Outputs: []c.Rule{UnionRule(typ)}, Now: func() time.Time { return epoch }}
+					if _, err := applyDefined(t, ClusterOperator{&configv1.ClusterOperator{}}, map[string]c.Object{"operator": operator}, rules); err != nil {
+						t.Fatal(err)
+					}
 					out := (OperatorUnion{Condition: typ}).Reduce(metav1.Condition{}, nil, nil, selected)
 					transition := metav1.Time{}
 					if test.age != 0 {
@@ -118,7 +122,7 @@ func TestOperatorProjectionAndRecovery(t *testing.T) {
 	children := map[string]c.Object{"Operator": operator}
 	rules := OpenShiftRules
 	rules.Now = func() time.Time { return epoch }
-	changed, err := c.Aggregate(parent, children, rules)
+	changed, err := applyDefined(t, parent, children, rules)
 	if err != nil || !changed {
 		t.Fatalf("aggregate: %v, %v", changed, err)
 	}
@@ -141,7 +145,7 @@ func TestOperatorProjectionAndRecovery(t *testing.T) {
 	if custom, _ := c.Lookup(parent, "Custom"); custom.Reason != "Retained" {
 		t.Fatal("unowned Condition changed")
 	}
-	if changed, err = c.Aggregate(parent, children, rules); err != nil || changed {
+	if changed, err = applyDefined(t, parent, children, rules); err != nil || changed {
 		t.Fatalf("not idempotent with native generation-less schema: %v, %v", changed, err)
 	}
 
@@ -152,7 +156,7 @@ func TestOperatorProjectionAndRecovery(t *testing.T) {
 			operator.Status.Conditions[i].LastTransitionTime = metav1.NewTime(epoch)
 		}
 	}
-	if changed, err = c.Aggregate(parent, children, rules); err != nil || !changed {
+	if changed, err = applyDefined(t, parent, children, rules); err != nil || !changed {
 		t.Fatalf("recovery: %v, %v", changed, err)
 	}
 	value, _ = c.Lookup(parent, "Degraded")
@@ -161,7 +165,7 @@ func TestOperatorProjectionAndRecovery(t *testing.T) {
 	}
 	operator.Status.Conditions[2].Message = "new diagnostic only"
 	operator.Status.Conditions[2].LastTransitionTime = metav1.NewTime(epoch.Add(time.Hour))
-	if _, err = c.Aggregate(parent, children, rules); err != nil {
+	if _, err = applyDefined(t, parent, children, rules); err != nil {
 		t.Fatal(err)
 	}
 	value, _ = c.Lookup(parent, "Degraded")
@@ -195,7 +199,7 @@ func (componentObject) GetConditions() []metav1.Condition {
 
 func TestOperandConditionsDoNotDriveOperatorStatus(t *testing.T) {
 	parent := ClusterOperator{&configv1.ClusterOperator{}}
-	_, err := c.Aggregate(parent, map[string]c.Object{"operand": &componentObject{}}, OpenShiftRules)
+	_, err := applyDefined(t, parent, map[string]c.Object{"operand": &componentObject{}}, OpenShiftRules)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,18 +211,15 @@ func TestOperandConditionsDoNotDriveOperatorStatus(t *testing.T) {
 }
 
 func Example() {
-	operator := &operatorv1.Console{ObjectMeta: metav1.ObjectMeta{Name: "cluster"}}
+	operator := &operatorv1.Console{TypeMeta: metav1.TypeMeta{APIVersion: "operator.openshift.io/v1", Kind: "Console"}, ObjectMeta: metav1.ObjectMeta{Name: "cluster"}}
 	operator.Status.Conditions = []operatorv1.OperatorCondition{
 		{Type: "ConfigDegraded", Status: operatorv1.ConditionTrue, Reason: "Invalid", Message: "invalid operator configuration"},
 		{Type: "RouteDegraded", Status: operatorv1.ConditionTrue, Reason: "UpdateDenied", Message: "route update denied"},
 	}
 	cluster := &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: "console"}}
-	_, err := c.Aggregate(ClusterOperator{cluster}, map[string]c.Object{
+	c.Aggregate(ClusterOperator{cluster}, map[string]c.Object{
 		"Operator": Operator{Object: operator, Status: &operator.Status.OperatorStatus},
-	}, OpenShiftRules)
-	if err != nil {
-		panic(err)
-	}
+	}, Aggregation)
 	value, _ := c.Lookup(ClusterOperator{cluster}, "Degraded")
 	fmt.Println(value.Status, value.Reason)
 	fmt.Println(value.Message)

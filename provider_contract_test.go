@@ -26,7 +26,7 @@ func TestProvidersFromSeparatePackages(t *testing.T) {
 	parent := &object{ObjectMeta: metav1.ObjectMeta{Generation: 7}}
 	for _, status := range []metav1.ConditionStatus{metav1.ConditionFalse, metav1.ConditionTrue} {
 		base := metav1.Condition{Type: "Ready", Status: status, Reason: "LocalObservation", Message: "detail"}
-		if changed, err := c.Aggregate(parent, nil, rules, base); err != nil || !changed {
+		if changed, err := c.ApplyRules(parent, nil, rules, base); err != nil || !changed {
 			t.Fatalf("change: %v %v", changed, err)
 		}
 		for _, name := range []string{"Ready", "Observed"} {
@@ -36,7 +36,7 @@ func TestProvidersFromSeparatePackages(t *testing.T) {
 			}
 		}
 		before := append([]metav1.Condition(nil), parent.GetConditions()...)
-		if changed, err := c.Aggregate(parent, nil, rules, base); err != nil || changed {
+		if changed, err := c.ApplyRules(parent, nil, rules, base); err != nil || changed {
 			t.Fatalf("repeat: %v %v", changed, err)
 		}
 		if !reflect.DeepEqual(before, parent.GetConditions()) {
@@ -52,21 +52,21 @@ func TestCompositionValidation(t *testing.T) {
 	good := rule(c.Outcome{State: c.State{Assessment: c.Good}, Reason: "Ready"})
 	for _, tc := range []struct {
 		name    string
-		outputs []c.Aggregation
+		outputs []c.Rule
 		want    string
 	}{
-		{"duplicate", []c.Aggregation{good, good}, "duplicate output"},
+		{"duplicate", []c.Rule{good, good}, "duplicate output"},
 		{"missing dependency", dependent.Rules(), "requires missing output"},
-		{"incomplete", []c.Aggregation{{Output: c.ConditionType{Type: "Bad"}}}, "incomplete aggregation"},
-		{"mismatched base", []c.Aggregation{func() c.Aggregation { r := good; r.DefaultBase = &metav1.Condition{Type: "Other"}; return r }()}, "does not match"},
-		{"self cycle", []c.Aggregation{func() c.Aggregation { r := good; r.Requires = []string{"Ready"}; return r }()}, "dependency cycle"},
-		{"mutual cycle", func() []c.Aggregation {
+		{"incomplete", []c.Rule{{Output: c.ConditionType{Type: "Bad"}}}, "incomplete aggregation"},
+		{"mismatched base", []c.Rule{func() c.Rule { r := good; r.DefaultBase = &metav1.Condition{Type: "Other"}; return r }()}, "does not match"},
+		{"self cycle", []c.Rule{func() c.Rule { r := good; r.Requires = []string{"Ready"}; return r }()}, "dependency cycle"},
+		{"mutual cycle", func() []c.Rule {
 			a, b := good, good
 			a.Requires = []string{"Other"}
 			b.Output.Type = "Other"
 			b.DefaultBase = &metav1.Condition{Type: "Other"}
 			b.Requires = []string{"Ready"}
-			return []c.Aggregation{a, b}
+			return []c.Rule{a, b}
 		}(), "dependency cycle"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -74,7 +74,7 @@ func TestCompositionValidation(t *testing.T) {
 				t.Fatalf("Compose: %v, want %q", err, tc.want)
 			}
 			parent := &object{}
-			if _, err := c.Aggregate(parent, nil, c.Rules{Outputs: tc.outputs}); err == nil || parent.sets != 0 {
+			if _, err := c.ApplyRules(parent, nil, c.Rules{Outputs: tc.outputs}); err == nil || parent.sets != 0 {
 				t.Fatalf("direct Rules bypassed validation: err=%v sets=%d", err, parent.sets)
 			}
 		})

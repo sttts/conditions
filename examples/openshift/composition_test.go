@@ -11,12 +11,12 @@ import (
 )
 
 func TestSelectOneUnion(t *testing.T) {
-	rules, err := c.Compose([]c.Aggregation{UnionRule(degraded)})
+	rules, err := c.Compose([]c.Rule{UnionRule(degraded)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	parent := ClusterOperator{&configv1.ClusterOperator{}}
-	if _, err := c.Aggregate(parent, nil, rules); err != nil {
+	if _, err := c.ApplyRules(parent, nil, rules); err != nil {
 		t.Fatal(err)
 	}
 	if len(parent.GetConditions()) != 1 {

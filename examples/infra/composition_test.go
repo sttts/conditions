@@ -13,12 +13,12 @@ import (
 )
 
 func TestExplicitLocalChecks(t *testing.T) {
-	rules, err := c.Compose([]c.Aggregation{LocalChecks("Custom")})
+	rules, err := c.Compose([]c.Rule{LocalChecks("Custom")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	parent := referenceParent(t, metav1.Condition{Type: "CustomHealth", Status: metav1.ConditionFalse, Reason: "HealthFailed", Message: "broken"})
-	_, err = c.Aggregate(parent, nil, rules, metav1.Condition{Type: "Custom", Status: metav1.ConditionTrue, Reason: "Passed"})
+	_, err = c.ApplyRules(parent, nil, rules, metav1.Condition{Type: "Custom", Status: metav1.ConditionTrue, Reason: "Passed"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,10 +41,10 @@ func TestInfraCompositionIsOrderIndependent(t *testing.T) {
 			slices.Reverse(reversed.Outputs)
 			local := slices.Clone(f.Bases)
 			slices.Reverse(local)
-			if _, err := Aggregate(a, children, rules, f.Bases...); err != nil {
+			if _, err := ApplyRules(a, children, rules, f.Bases...); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := Aggregate(b, children, reversed, local...); err != nil {
+			if _, err := ApplyRules(b, children, reversed, local...); err != nil {
 				t.Fatal(err)
 			}
 			if !reflect.DeepEqual(a.GetConditions(), b.GetConditions()) {

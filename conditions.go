@@ -83,7 +83,7 @@ type Derivation interface {
 // Output order is not evaluation order; Requires declares current-call dependencies.
 // Unowned local Conditions are copied unchanged apart from transition timestamps.
 type Rules struct {
-	Outputs []Aggregation
+	Outputs []Rule
 	Now     func() time.Time
 }
 
@@ -108,7 +108,7 @@ func (c ConditionType) Read(s Object) metav1.Condition { value, _ := Lookup(s, c
 
 // Assessment normalizes a raw status without guessing escalation from its boolean.
 func (c ConditionType) Assessment(value metav1.Condition) Assessment {
-	if value.Status == metav1.ConditionUnknown {
+	if value.Status != metav1.ConditionTrue && value.Status != metav1.ConditionFalse {
 		return Unknown
 	}
 	good := value.Status == metav1.ConditionTrue
@@ -192,8 +192,8 @@ const (
 	NoObservedGeneration
 )
 
-// Aggregation is a flat value composing implementations of Conditions concepts.
-type Aggregation struct {
+// Rule is a flat value composing implementations of Conditions concepts.
+type Rule struct {
 	// Requires names selected outputs whose current-call results are visible to this rule.
 	// Other rules' new results are isolated; previous persisted Conditions remain readable.
 	Requires    []string
@@ -209,7 +209,7 @@ type Aggregation struct {
 }
 
 // Evaluate derives one desired Condition without modifying the supplied objects.
-func (a Aggregation) Evaluate(parent Object, children map[string]Object, base metav1.Condition, now time.Time) (*metav1.Condition, error) {
+func (a Rule) Evaluate(parent Object, children map[string]Object, base metav1.Condition, now time.Time) (*metav1.Condition, error) {
 	if isNil(parent) {
 		return nil, fmt.Errorf("parent is nil")
 	}
@@ -270,8 +270,8 @@ func (a Aggregation) Evaluate(parent Object, children map[string]Object, base me
 		LastTransitionTime: transition}, nil
 }
 
-// Aggregate applies the configured rules to existing objects and reports in-memory changes.
-func Aggregate(parent Conditioned, children map[string]Object, rules Rules, local ...metav1.Condition) (bool, error) {
+// ApplyRules applies the configured rules to existing objects and reports in-memory changes.
+func ApplyRules(parent Conditioned, children map[string]Object, rules Rules, local ...metav1.Condition) (bool, error) {
 	desired, err := Evaluate(parent, children, rules, local...)
 	if err != nil {
 		return false, err

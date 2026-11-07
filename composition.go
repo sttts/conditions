@@ -86,12 +86,40 @@ func plan(rules evaluationPlan) ([]compiledRule, map[string]string, error) {
 // evaluate computes desired Conditions without modifying the supplied objects.
 // evaluationPlan read a shared input snapshot plus only their declared dependency results.
 func evaluate(parent Object, children map[string]Object, rules evaluationPlan, local ...metav1.Condition) ([]metav1.Condition, error) {
+	return evaluateOutputs(parent, children, rules, nil, local...)
+}
+
+// A non-nil target limits execution, while ownership remains global so unrelated
+// local assertions cannot leak into the shared input snapshot.
+func evaluateOutputs(parent Object, children map[string]Object, rules evaluationPlan, target *string, local ...metav1.Condition) ([]metav1.Condition, error) {
 	if isNil(parent) {
 		return nil, fmt.Errorf("parent is nil")
 	}
 	ordered, owners, err := plan(rules)
 	if err != nil {
 		return nil, err
+	}
+	if target != nil {
+		owner, ok := owners[*target]
+		if !ok {
+			return nil, fmt.Errorf("unknown output %q", *target)
+		}
+		needed := map[string]bool{owner: true}
+		// The plan is topologically ordered; walk backwards to collect dependencies.
+		for i := len(ordered) - 1; i >= 0; i-- {
+			if needed[ordered[i].Output.Type] {
+				for _, dependency := range ordered[i].Requires {
+					needed[owners[dependency]] = true
+				}
+			}
+		}
+		selected := make([]compiledRule, 0, len(needed))
+		for _, rule := range ordered {
+			if needed[rule.Output.Type] {
+				selected = append(selected, rule)
+			}
+		}
+		ordered = selected
 	}
 	nowFunc := rules.Now
 	if nowFunc == nil {
@@ -150,6 +178,12 @@ func evaluate(parent Object, children map[string]Object, rules evaluationPlan, l
 				results[derived.Type] = derived
 			}
 		}
+	}
+	if target != nil {
+		if value, ok := results[*target]; ok {
+			return []metav1.Condition{value}, nil
+		}
+		return nil, nil
 	}
 	// Preserve existing slice order; append newly produced types in canonical order.
 	working := &conditionOverlay{Object: parent, conditions: append([]metav1.Condition(nil), input.GetConditions()...)}

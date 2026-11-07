@@ -25,14 +25,5 @@ func evaluateOutput(output c.OutputDefinition, parent c.Object, children map[str
 	output.Derived = nil  // Initialized has its own explicit corpus step.
 	base.Type = output.Name
 	d := c.Definition{Outputs: []c.OutputDefinition{output}, Children: []c.ChildBinding{c.Child(InputSchema, c.Classify())}, Now: func() time.Time { return now }}
-	values, err := c.EvaluateAggregation(parent, children, c.Define(d), base)
-	if err != nil {
-		return nil, err
-	}
-	for _, value := range values {
-		if value.Type == output.Name {
-			return &value, nil
-		}
-	}
-	return nil, nil
+	return c.Evaluate(output.Name, parent, children, c.Define(d), base)
 }

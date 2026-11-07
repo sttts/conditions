@@ -247,13 +247,29 @@ The [cross-module example](examples/crossplane/schema_external_test.go) consumes
 Crossplane schemas, filters by resource identity, maps both to application Ready, then uses
 that application's published schema in a further aggregation with Identity.
 
+## Computing one condition
+
+```go
+ready, err := conditions.Evaluate("Ready", parent, children, Aggregation, localConditions...)
+```
+
+This returns `(*metav1.Condition, error)` without setting conditions on the parent.
+Classification, reducers, formatting, generation and transition-time handling are the same
+as `Aggregate`. Only the requested output's owner and its transitive `Requires` dependencies
+run. Derived output names are supported too; an owner's derivations run together.
+An unknown output name is an error. If the output produces no new result (for example,
+`Local("Synced", ...)` without a local assertion), the result is nil, even when a persisted
+condition exists. `EvaluateAggregation` instead returns the complete desired slice,
+including retained conditions.
+
 ## Validation and extension contracts
 
 `Define` validates programmer configuration and panics on errors; use it in package variables
 or during startup. `Aggregate`/`AggregateSlice` return only `bool`: invalid caller input such as
 duplicate local assertions also panics **before the setter runs**, never masquerading as
 `changed=false`. Missing conditions and Unknown are normal observations. For returned
-runtime errors and pure evaluation, use `EvaluateAggregation`.
+runtime errors and pure evaluation, use `Evaluate` for one output or `EvaluateAggregation`
+for the complete desired slice.
 
 Definitions snapshot schema maps, scopes, mappings, bases and rule slices. Custom classifiers,
 selectors, reducers, derivations, formatters and clock callbacks must be pure/read-only and
@@ -263,7 +279,7 @@ safe to share. Their internal mutable state cannot be deep-cloned by the library
 There is one public configuration path: `Definition` → `Define` → `Aggregation`.
 Compose independent providers by appending their `OutputDefinition` values to `Definition.Outputs`.
 The evaluator and its compiled rules are internal. The former public `Rule`, `Rules`, `Compose`,
-`Evaluate`, and `ApplyRules` APIs have been removed; use `EvaluateAggregation` for pure evaluation.
+and `ApplyRules` APIs have been removed. `Evaluate` now computes one named output.
 The original semantic and message fixtures are checked directly through the public API;
 there is no duplicate reference evaluator or parallel legacy configuration.
 

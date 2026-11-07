@@ -279,6 +279,31 @@ func (s classifiedSelector) Select(parent, child Object) []Contribution {
 // bindings are filtered out. Scoped schemas require TypeMeta, Definition.Scheme,
 // or WithGVK. Resolution errors are returned before any mutation.
 func EvaluateAggregation(parent Object, children map[string]Object, a *Aggregation, local ...metav1.Condition) ([]metav1.Condition, error) {
+	selected, err := a.selectChildren(children)
+	if err != nil {
+		return nil, err
+	}
+	return evaluate(parent, selected, a.rules, local...)
+}
+
+// Evaluate computes one declared output without modifying the supplied objects.
+// It evaluates only the output's owner and its transitive dependencies, using the
+// same classification and formatting as Aggregate. Derived outputs are supported.
+// It returns nil when that output produces no new result, even if a persisted
+// condition exists. An unknown output name or invalid caller input returns an error.
+func Evaluate(name string, parent Object, children map[string]Object, a *Aggregation, local ...metav1.Condition) (*metav1.Condition, error) {
+	selected, err := a.selectChildren(children)
+	if err != nil {
+		return nil, err
+	}
+	values, err := evaluateOutputs(parent, selected, a.rules, &name, local...)
+	if err != nil || len(values) == 0 {
+		return nil, err
+	}
+	return &values[0], nil
+}
+
+func (a *Aggregation) selectChildren(children map[string]Object) (map[string]Object, error) {
 	if a == nil {
 		return nil, fmt.Errorf("aggregation is nil")
 	}
@@ -298,7 +323,7 @@ func EvaluateAggregation(parent Object, children map[string]Object, a *Aggregati
 			selected[name] = child
 		}
 	}
-	return evaluate(parent, selected, a.rules, local...)
+	return selected, nil
 }
 
 // Aggregate applies the desired slice exactly once and returns the native setter's change flag.

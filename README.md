@@ -11,7 +11,7 @@ the next consumer. There is no registry or universal vocabulary of semantic kind
 // In the dependency's package; Resources may be omitted for a global schema.
 var Schema = conditions.Schema{
     Resources: []conditions.ResourceMatch{conditions.G("database.example.io")},
-    Conditions: map[string]conditions.ConditionSpec{
+    Conditions: map[string]conditions.Spec{
         "Available": {Polarity: conditions.TrueIsGood},
         "Synced":    {Polarity: conditions.TrueIsGood},
     },
@@ -24,8 +24,8 @@ In the consuming application:
 var Aggregation = conditions.Define(conditions.Definition{
     Resources: []conditions.ResourceMatch{conditions.GK("apps.example.io", "Application")},
     Outputs: []conditions.OutputDefinition{
-        conditions.Output("Ready", conditions.ConditionSpec{Polarity: conditions.TrueIsGood}),
-        conditions.Output("Synced", conditions.ConditionSpec{Polarity: conditions.TrueIsGood}).Local(),
+        conditions.Output("Ready", conditions.Spec{Polarity: conditions.TrueIsGood}),
+        conditions.Output("Synced", conditions.Spec{Polarity: conditions.TrueIsGood}).Local(),
     },
     Children: []conditions.ChildBinding{
         conditions.Child(database.Schema, conditions.Classify(
@@ -89,7 +89,7 @@ observations produces Unknown. Among bad observations, Failed dominates WaitingF
 then ordinary bad. A bad or unknown local base takes precedence over children. The generated
 reasons are published in `Aggregation.Schema()` so escalation survives another aggregation
 level. Custom reducers publish their reason interpretation in the same output
-definition through `ConditionSpec.Reasons`. A `Classifier` interprets bad-condition reasons;
+definition through `Spec.Reasons`. A `Classifier` interprets bad-condition reasons;
 `Classification` translates child vocabulary into parent outputs.
 
 Within a project, reference the same published schema with `Child(project.Schema, Identity)`.
@@ -153,7 +153,7 @@ accept ordinary Go snippets wherever defining a separate type would add little v
 ```go
 output := conditions.OutputDefinition{
     Name: "Ready",
-    Spec: conditions.ConditionSpec{Polarity: conditions.TrueIsGood},
+    Spec: conditions.Spec{Polarity: conditions.TrueIsGood},
     Children: conditions.ChildSelectorFunc(func(parent, child conditions.Object) []conditions.Contribution {
         if parent.GetDeletionTimestamp() != nil { return nil }
         return selectDatabaseHealth(parent, child) // ordinary project Go code

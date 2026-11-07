@@ -32,7 +32,7 @@ The default `All` reducer exports its own escalation reason interpretation with 
 schema. Therefore a subsequent consumer can reference that schema without reproducing the
 original reducer. Local-only outputs and contextual Go policies remain explicit. `Definition` and all helper results are open Go structs. Each output declares its contract
 and derivation together; the output schema is generated from these definitions. There is
-no separate schema declaration or rule-reassembly bridge. `ConditionSpec.Reasons` interprets
+no separate schema declaration or rule-reassembly bridge. `Spec.Reasons` interprets
 bad-condition reasons; `Classification` translates names at the consumer boundary.
 
 Unmapped sources are ignored, allowing additive provider evolution. `RequireAll` is an

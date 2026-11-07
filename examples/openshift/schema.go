@@ -11,7 +11,7 @@ import (
 // OperatorSchema describes families of controller assertions, not operand health.
 var OperatorSchema = c.Schema{
 	Resources: []c.ResourceMatch{c.G("operator.openshift.io")},
-	Conditions: map[string]c.ConditionSpec{
+	Conditions: map[string]c.Spec{
 		"Available":   {Polarity: c.TrueIsGood, Suffix: true},
 		"Progressing": {Polarity: c.FalseIsGood, Suffix: true},
 		"Degraded":    {Polarity: c.FalseIsGood, Suffix: true},
@@ -20,7 +20,7 @@ var OperatorSchema = c.Schema{
 }
 
 // unionOutput combines the public contract with the native Go union implementation.
-func unionOutput(name string, spec c.ConditionSpec) c.OutputDefinition {
+func unionOutput(name string, spec c.Spec) c.OutputDefinition {
 	return c.OutputDefinition{
 		Name: name, Spec: spec,
 		DefaultBase: &metav1.Condition{}, Parent: c.ChildrenOnly{},
@@ -32,10 +32,10 @@ func unionOutput(name string, spec c.ConditionSpec) c.OutputDefinition {
 var Aggregation = c.Define(c.Definition{
 	Resources: []c.ResourceMatch{c.GK("config.openshift.io", "ClusterOperator")},
 	Outputs: []c.OutputDefinition{
-		unionOutput("Available", c.ConditionSpec{Polarity: c.TrueIsGood}),
-		unionOutput("Progressing", c.ConditionSpec{Polarity: c.FalseIsGood}),
-		unionOutput("Degraded", c.ConditionSpec{Polarity: c.FalseIsGood}),
-		unionOutput("Upgradeable", c.ConditionSpec{Polarity: c.TrueIsGood}),
+		unionOutput("Available", c.Spec{Polarity: c.TrueIsGood}),
+		unionOutput("Progressing", c.Spec{Polarity: c.FalseIsGood}),
+		unionOutput("Degraded", c.Spec{Polarity: c.FalseIsGood}),
+		unionOutput("Upgradeable", c.Spec{Polarity: c.TrueIsGood}),
 	},
 	Children: []c.ChildBinding{c.Child(OperatorSchema, c.Identity)},
 })

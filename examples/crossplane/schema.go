@@ -11,7 +11,7 @@ import (
 
 // NativeSchema is global: Crossplane providers use independent API groups.
 // Consumers can restrict an individual Child binding with For(G/GV/GK/GVK(...)).
-var NativeSchema = c.Schema{Conditions: map[string]c.ConditionSpec{
+var NativeSchema = c.Schema{Conditions: map[string]c.Spec{
 	"Ready":  {Polarity: c.TrueIsGood, Missing: &metav1.Condition{Reason: "ConditionMissing", Message: "Ready condition has not been reported"}},
 	"Synced": {Polarity: c.TrueIsGood},
 }}

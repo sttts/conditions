@@ -14,18 +14,18 @@ import (
 func TestHelpersAndPlainGoHaveSameBehavior(t *testing.T) {
 	input := contract("Available", c.FalseIsGood)
 	// New upstream conditions are additive; consumers need no new Ignore entries.
-	input.Conditions["NewCondition"] = c.ConditionSpec{Polarity: c.TrueIsGood}
+	input.Conditions["NewCondition"] = c.Spec{Polarity: c.TrueIsGood}
 	clock := func() time.Time { return time.Unix(123, 0) }
 	helpers := c.Define(c.Definition{
 		Now:      clock,
-		Outputs:  []c.OutputDefinition{c.Output("Ready", c.ConditionSpec{Polarity: c.TrueIsGood}).Messages(c.BoundedMessages{}), c.Output("Synced", c.ConditionSpec{}).Local()},
+		Outputs:  []c.OutputDefinition{c.Output("Ready", c.Spec{Polarity: c.TrueIsGood}).Messages(c.BoundedMessages{}), c.Output("Synced", c.Spec{}).Local()},
 		Children: []c.ChildBinding{c.Child(input, c.Classify(c.Map("Available", "Ready").When(c.Status(metav1.ConditionTrue)).Escalate(c.Failed, c.Reason("Broken")))).For(c.G("db.io"))},
 	})
 	plain := c.Define(c.Definition{
 		Now: clock,
 		Outputs: []c.OutputDefinition{
-			{Name: "Ready", Spec: c.ConditionSpec{Polarity: c.TrueIsGood}, Format: c.BoundedMessages{}},
-			{Name: "Synced", Spec: c.ConditionSpec{}, LocalOnly: true},
+			{Name: "Ready", Spec: c.Spec{Polarity: c.TrueIsGood}, Format: c.BoundedMessages{}},
+			{Name: "Synced", Spec: c.Spec{}, LocalOnly: true},
 		},
 		Children: []c.ChildBinding{{
 			Schema:    input,
@@ -50,7 +50,7 @@ func TestHelpersAndPlainGoHaveSameBehavior(t *testing.T) {
 
 func TestGoCallbacksAndPublishedReasons(t *testing.T) {
 	calls := 0
-	spec := c.ConditionSpec{Polarity: c.TrueIsGood, Reasons: c.ClassifierFunc(func(value metav1.Condition) c.Escalation {
+	spec := c.Spec{Polarity: c.TrueIsGood, Reasons: c.ClassifierFunc(func(value metav1.Condition) c.Escalation {
 		if value.Reason == "CapacityExhausted" {
 			return c.Failed
 		}
@@ -84,7 +84,7 @@ func TestGoCallbacksAndPublishedReasons(t *testing.T) {
 		t.Fatalf("custom selector escaped binding scope: %d calls", calls)
 	}
 	top := c.Define(c.Definition{
-		Outputs:  []c.OutputDefinition{c.Output("Ready", c.ConditionSpec{})},
+		Outputs:  []c.OutputDefinition{c.Output("Ready", c.Spec{})},
 		Children: []c.ChildBinding{c.Child(a.Schema(), c.Classify(c.Map("Healthy", "Ready")))},
 	})
 	root := &object{}
@@ -96,9 +96,9 @@ func TestGoCallbacksAndPublishedReasons(t *testing.T) {
 
 func TestDefinitionSnapshotsReasonMapsAndMappings(t *testing.T) {
 	reasons := map[string]c.Escalation{"Broken": c.Failed}
-	spec := c.ConditionSpec{Reasons: c.ReasonClassifier{Reasons: reasons}}
+	spec := c.Spec{Reasons: c.ReasonClassifier{Reasons: reasons}}
 	mapping := c.Map("Available", "Ready").Escalate(c.WaitingForHuman, c.Reason("Manual"))
-	binding := c.Child(c.Schema{Conditions: map[string]c.ConditionSpec{"Available": spec}}, c.Classify(mapping))
+	binding := c.Child(c.Schema{Conditions: map[string]c.Spec{"Available": spec}}, c.Classify(mapping))
 	d := c.Definition{Outputs: []c.OutputDefinition{c.Output("Ready", spec)}, Children: []c.ChildBinding{binding}}
 	a := c.Define(d)
 	reasons["Broken"] = c.None
@@ -119,7 +119,7 @@ func TestDefinitionSnapshotsReasonMapsAndMappings(t *testing.T) {
 }
 
 func TestPublicConfigurationValidation(t *testing.T) {
-	output := c.Output("Ready", c.ConditionSpec{})
+	output := c.Output("Ready", c.Spec{})
 	for _, tc := range []struct {
 		name, want string
 		def        c.Definition
@@ -127,7 +127,7 @@ func TestPublicConfigurationValidation(t *testing.T) {
 		{"duplicate output", "duplicate output", c.Definition{Outputs: []c.OutputDefinition{output, output}}},
 		{"local selector conflict", "local output", c.Definition{Outputs: []c.OutputDefinition{{Name: "Ready", LocalOnly: true, Children: c.ChildSelectorFunc(func(c.Object, c.Object) []c.Contribution { return nil })}}}},
 		{"wrong default", "default base", c.Definition{Outputs: []c.OutputDefinition{{Name: "Ready", DefaultBase: &metav1.Condition{Type: "Other"}}}}},
-		{"orphan derived contract", "has no derivation", c.Definition{Outputs: []c.OutputDefinition{{Name: "Ready", DerivedConditions: map[string]c.ConditionSpec{"Initialized": {}}}}}},
+		{"orphan derived contract", "has no derivation", c.Definition{Outputs: []c.OutputDefinition{{Name: "Ready", DerivedConditions: map[string]c.Spec{"Initialized": {}}}}}},
 		{"identity plus mappings", "SameNames", c.Definition{Outputs: []c.OutputDefinition{output}, Children: []c.ChildBinding{{Schema: contract("Ready", c.TrueIsGood), Classification: c.Classification{SameNames: true, Mappings: []c.Mapping{c.Map("Ready", "Ready")}}}}}},
 		{"bad literal escalation", "invalid escalation", c.Definition{Outputs: []c.OutputDefinition{output}, Children: []c.ChildBinding{c.Child(contract("Ready", c.TrueIsGood), c.Classify(c.Mapping{Source: "Ready", Target: "Ready", Overrides: []c.EscalationOverride{{Level: 99}}}))}}},
 	} {

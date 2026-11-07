@@ -56,11 +56,11 @@ func (r ResourceMatch) String() string {
 	return fmt.Sprintf("%q/%s, Kind=%s", r.Group, v, k)
 }
 
-// ConditionSpec is the published interpretation of a condition, independent of its consumers.
+// Spec is the published interpretation of a condition, independent of its consumers.
 // Suffix describes a family such as OpenShift's *Available operator conditions.
 // Missing supplies diagnostics for a missing exact condition (status is always Unknown).
 // A suffix family contributes nothing when no matching conditions are present.
-type ConditionSpec struct {
+type Spec struct {
 	Polarity Polarity
 	Reasons  Classifier
 	Suffix   bool
@@ -73,11 +73,11 @@ type ConditionSpec struct {
 // Custom classifiers must be immutable and safe to share across evaluations.
 type Schema struct {
 	Resources  []ResourceMatch
-	Conditions map[string]ConditionSpec
+	Conditions map[string]Spec
 }
 
 func cloneSchema(s Schema) Schema {
-	out := Schema{Resources: append([]ResourceMatch(nil), s.Resources...), Conditions: map[string]ConditionSpec{}}
+	out := Schema{Resources: append([]ResourceMatch(nil), s.Resources...), Conditions: map[string]Spec{}}
 	for name, spec := range s.Conditions {
 		if spec.Missing != nil {
 			copy := *spec.Missing

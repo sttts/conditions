@@ -20,8 +20,8 @@ import (
 var application = c.Define(c.Definition{
 	Resources: []c.ResourceMatch{c.G("apps.example.io")},
 	Outputs: []c.OutputDefinition{
-		c.Output("Ready", c.ConditionSpec{Polarity: c.TrueIsGood}),
-		c.Output("Synced", c.ConditionSpec{Polarity: c.TrueIsGood}).Local(),
+		c.Output("Ready", c.Spec{Polarity: c.TrueIsGood}),
+		c.Output("Synced", c.Spec{Polarity: c.TrueIsGood}).Local(),
 	},
 	Children: []c.ChildBinding{
 		c.Child(infra.Schema, c.Classify(c.Map("Available", "Ready"))).For(c.GK("infra.example.io", "Worker")),

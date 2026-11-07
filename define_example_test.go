@@ -13,7 +13,7 @@ import (
 // A dependency package publishes this; it knows nothing about its consumers.
 var databaseSchema = c.Schema{
 	Resources: []c.ResourceMatch{c.G("database.example.io")},
-	Conditions: map[string]c.ConditionSpec{
+	Conditions: map[string]c.Spec{
 		"Available": {Polarity: c.TrueIsGood},
 		"Synced":    {Polarity: c.TrueIsGood},
 	},
@@ -23,8 +23,8 @@ var databaseSchema = c.Schema{
 var applicationAggregation = c.Define(c.Definition{
 	Resources: []c.ResourceMatch{c.GK("apps.example.io", "Application")},
 	Outputs: []c.OutputDefinition{
-		c.Output("Ready", c.ConditionSpec{Polarity: c.TrueIsGood}),
-		c.Output("Synced", c.ConditionSpec{Polarity: c.TrueIsGood}).Local(),
+		c.Output("Ready", c.Spec{Polarity: c.TrueIsGood}),
+		c.Output("Synced", c.Spec{Polarity: c.TrueIsGood}).Local(),
 	},
 	Children: []c.ChildBinding{
 		c.Child(databaseSchema, c.Classify(

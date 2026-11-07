@@ -16,7 +16,7 @@ import (
 )
 
 func contract(name string, polarity c.Polarity) c.Schema {
-	return c.Schema{Conditions: map[string]c.ConditionSpec{name: {Polarity: polarity}}}
+	return c.Schema{Conditions: map[string]c.Spec{name: {Polarity: polarity}}}
 }
 func observation(name string, status metav1.ConditionStatus, reason string) *object {
 	return &object{conditions: []metav1.Condition{{Type: name, Status: status, Reason: reason, Message: reason}}}
@@ -207,7 +207,7 @@ func TestAtomicityImmutabilityAndSlice(t *testing.T) {
 	scopes := []c.ResourceMatch{c.G("db.io")}
 	binding := c.Child(s, c.Identity).For(scopes...)
 	a := define(s, binding)
-	s.Conditions["Ready"] = c.ConditionSpec{Polarity: c.FalseIsGood}
+	s.Conditions["Ready"] = c.Spec{Polarity: c.FalseIsGood}
 	scopes[0] = c.G("changed.io")
 	exported := a.Schema()
 	delete(exported.Conditions, "Ready")
@@ -238,7 +238,7 @@ func TestAtomicityImmutabilityAndSlice(t *testing.T) {
 
 func TestFilteringAndConditionalParticipation(t *testing.T) {
 	input := contract("Available", c.TrueIsGood)
-	input.Conditions["Synced"] = c.ConditionSpec{Polarity: c.TrueIsGood}
+	input.Conditions["Synced"] = c.Spec{Polarity: c.TrueIsGood}
 	a := define(contract("Ready", c.TrueIsGood), c.Child(input, c.Classify(
 		c.Map("Available", "Ready").When(c.Status(metav1.ConditionFalse)), c.Ignore("Synced"),
 	)).For(c.G("db.io")))

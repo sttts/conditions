@@ -9,7 +9,7 @@ import (
 )
 
 // InputSchema is the shared, global project vocabulary, including job-like resources.
-var InputSchema = c.Schema{Conditions: map[string]c.ConditionSpec{
+var InputSchema = c.Schema{Conditions: map[string]c.Spec{
 	"Available":   {Polarity: TrueIsGood, Reasons: InfraClassification},
 	"Initialized": {Polarity: TrueIsGood},
 	"NonDegraded": {Polarity: TrueIsGood, Reasons: InfraClassification},
@@ -26,7 +26,7 @@ var InputSchema = c.Schema{Conditions: map[string]c.ConditionSpec{
 var AvailabilityOutput = c.OutputDefinition{
 	Name: "Available", Spec: InputSchema.Conditions["Available"],
 	Derived:           []c.Derivation{InfraInitialization{}},
-	DerivedConditions: map[string]c.ConditionSpec{"Initialized": InputSchema.Conditions["Initialized"]},
+	DerivedConditions: map[string]c.Spec{"Initialized": InputSchema.Conditions["Initialized"]},
 	Parent:            LocalBaseFirst{Base: InfraConditions.Available, Classifier: InfraClassification, OverrideOnDeletion: true},
 	LocalChecks:       PrefixedChecks{Prefix: "Available", Polarity: TrueIsGood, Classifier: InfraClassification},
 	Children: ServingChildren{Inputs: InfraConditions, Condition: InfraConditions.Available, Classifier: InfraClassification,

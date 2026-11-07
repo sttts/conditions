@@ -27,7 +27,7 @@ type Definition struct {
 // Callbacks and interface implementations must be read-only and concurrency-safe.
 type OutputDefinition struct {
 	Name              string
-	Spec              ConditionSpec
+	Spec              Spec
 	LocalOnly         bool
 	Requires          []string
 	DefaultBase       *metav1.Condition
@@ -38,11 +38,11 @@ type OutputDefinition struct {
 	Format            Formatter
 	Generation        GenerationPolicy
 	Derived           []Derivation
-	DerivedConditions map[string]ConditionSpec
+	DerivedConditions map[string]Spec
 }
 
 // Output declares an output with its published interpretation, exactly once.
-func Output(name string, spec ConditionSpec) OutputDefinition {
+func Output(name string, spec Spec) OutputDefinition {
 	return OutputDefinition{Name: name, Spec: spec}
 }
 func (o OutputDefinition) Local() OutputDefinition { o.LocalOnly = true; return o }
@@ -75,8 +75,8 @@ func (a *Aggregation) Schema() Schema { return cloneSchema(a.schema) }
 // Define validates and snapshots ordinary Go configuration. Invalid programmer
 // configuration panics at construction; missing observations are ordinary data.
 func Define(d Definition) *Aggregation {
-	s := Schema{Resources: append([]ResourceMatch(nil), d.Resources...), Conditions: map[string]ConditionSpec{}}
-	add := func(name string, spec ConditionSpec) {
+	s := Schema{Resources: append([]ResourceMatch(nil), d.Resources...), Conditions: map[string]Spec{}}
+	add := func(name string, spec Spec) {
 		if _, exists := s.Conditions[name]; exists {
 			panic(fmt.Sprintf("conditions: duplicate output %q", name))
 		}
@@ -96,7 +96,7 @@ func Define(d Definition) *Aggregation {
 		_, all := o.Reduction.(All)
 		if !o.LocalOnly && (o.Reduction == nil || all) {
 			// Clone before wrapping so exported schemas do not share mutable reason maps.
-			spec = cloneSchema(Schema{Conditions: map[string]ConditionSpec{o.Name: spec}}).Conditions[o.Name]
+			spec = cloneSchema(Schema{Conditions: map[string]Spec{o.Name: spec}}).Conditions[o.Name]
 			spec.Reasons = aggregateClassifier{fallback: spec.Reasons}
 		}
 		add(o.Name, spec)

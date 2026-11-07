@@ -29,14 +29,19 @@ func unionOutput(name string, spec c.Spec) c.OutputDefinition {
 	}
 }
 
-var Aggregation = c.Define(c.Definition{
-	Resources: []c.ResourceMatch{c.GK("config.openshift.io", "ClusterOperator")},
-	Outputs: []c.OutputDefinition{
-		unionOutput("Available", c.Spec{Polarity: c.TrueIsGood}),
-		unionOutput("Progressing", c.Spec{Polarity: c.FalseIsGood}),
-		unionOutput("Degraded", c.Spec{Polarity: c.FalseIsGood}),
-		unionOutput("Upgradeable", c.Spec{Polarity: c.TrueIsGood}),
-	},
-	Children: []c.ChildBinding{c.Child(OperatorSchema, c.Identity)},
-})
+var Aggregation = c.Define(definition())
+
+func definition() c.Definition {
+	return c.Definition{
+		Resources: []c.ResourceMatch{c.GK("config.openshift.io", "ClusterOperator")},
+		Outputs: []c.OutputDefinition{
+			unionOutput("Available", c.Spec{Polarity: c.TrueIsGood}),
+			unionOutput("Progressing", c.Spec{Polarity: c.FalseIsGood}),
+			unionOutput("Degraded", c.Spec{Polarity: c.FalseIsGood}),
+			unionOutput("Upgradeable", c.Spec{Polarity: c.TrueIsGood}),
+		},
+		Children: []c.ChildBinding{c.Child(OperatorSchema, c.Identity)},
+	}
+}
+
 var Schema = Aggregation.Schema()

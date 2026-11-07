@@ -199,8 +199,21 @@ conditions or parent lifecycle state. `Map(...).Select(selector)` offers the sam
 for a particular mapping, with its `When` and escalation overrides applied afterward.
 A global `Child(schema, Classify())` can admit objects exclusively for custom selectors.
 
-`Derived` and `DerivedConditions` attach additional owned conditions and their published
-contracts to the output that produces them; dependencies remain explicit in `Requires`.
+`Derived` attaches Go derivations to the output that produces them. Each derivation declares
+its names and published Specs together; no separate output-contract map is needed:
+
+```go
+func (Initialization) Outputs() map[string]conditions.Spec {
+    return map[string]conditions.Spec{
+        "Initialized": {Polarity: conditions.TrueIsGood},
+    }
+}
+```
+
+`Derive(parent, now)` returns the actual conditions. `Define` snapshots the declared Specs,
+adds them to the published schema, and validates exclusive ownership. A derivation may omit
+an output in a particular call, but may not write an undeclared type. Dependencies remain
+explicit in `Requires`.
 Nil `Parent`, `Reduction`, and `Formatter` select the standard behavior. A custom parent policy
 owns its missing-base convention; supply `DefaultBase` if it should run without a local base.
 `LocalOnly` disables child contributions and, by default, requires a local assertion.
@@ -232,7 +245,8 @@ There is one public configuration path: `Definition` → `Define` → `Aggregati
 Compose independent providers by appending their `OutputDefinition` values to `Definition.Outputs`.
 The evaluator and its compiled rules are internal. The former public `Rule`, `Rules`, `Compose`,
 `Evaluate`, and `ApplyRules` APIs have been removed; use `EvaluateAggregation` for pure evaluation.
-Historical configurations live only in tests, with a frozen reference evaluator for conformance.
+The original semantic and message fixtures are checked directly through the public API;
+there is no duplicate reference evaluator or parallel legacy configuration.
 
 ## Resource adapters
 

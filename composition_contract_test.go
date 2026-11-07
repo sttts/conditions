@@ -76,7 +76,7 @@ func TestTransitiveAndUnprocessedBaseResultsDoNotLeak(t *testing.T) {
 
 type repeatedResult struct{}
 
-func (repeatedResult) Outputs() []string { return []string{"Initialized"} }
+func (repeatedResult) Outputs() map[string]c.Spec { return map[string]c.Spec{"Initialized": {}} }
 func (repeatedResult) Derive(c.Object, time.Time) []metav1.Condition {
 	return []metav1.Condition{{Type: "Initialized", Status: metav1.ConditionTrue, Reason: "First"}, {Type: "Initialized", Status: metav1.ConditionFalse, Reason: "Second"}}
 }

@@ -25,10 +25,9 @@ var InputSchema = c.Schema{Conditions: map[string]c.Spec{
 // lifecycle logic; no synthetic identity mapping is needed for a multi-axis selector.
 var AvailabilityOutput = c.OutputDefinition{
 	Name: "Available", Spec: InputSchema.Conditions["Available"],
-	Derived:           []c.Derivation{InfraInitialization{}},
-	DerivedConditions: map[string]c.Spec{"Initialized": InputSchema.Conditions["Initialized"]},
-	Parent:            LocalBaseFirst{Base: InfraConditions.Available, Classifier: InfraClassification, OverrideOnDeletion: true},
-	LocalChecks:       PrefixedChecks{Prefix: "Available", Polarity: TrueIsGood, Classifier: InfraClassification},
+	Derived:     []c.Derivation{InfraInitialization{}},
+	Parent:      LocalBaseFirst{Base: InfraConditions.Available, Classifier: InfraClassification, OverrideOnDeletion: true},
+	LocalChecks: PrefixedChecks{Prefix: "Available", Polarity: TrueIsGood, Classifier: InfraClassification},
 	Children: ServingChildren{Inputs: InfraConditions, Condition: InfraConditions.Available, Classifier: InfraClassification,
 		False: existingChildren, Failure: existingChildren, Human: Never{}, Unknown: beforeInitialization,
 		SyncError: beforeInitialization, JobRunning: beforeInitialization, JobFailed: beforeInitialization,
@@ -70,10 +69,15 @@ var DeletingOutput = c.OutputDefinition{
 	Formatter:   infraMessages, Generation: PreserveBaseGeneration,
 }
 
-var Aggregation = c.Define(c.Definition{
-	Outputs:  []c.OutputDefinition{AvailabilityOutput, NonDegradedOutput, UpToDateOutput, SyncedOutput, DeletingOutput},
-	Children: []c.ChildBinding{c.Child(InputSchema, c.Identity)},
-})
+var Aggregation = c.Define(definition())
+
+func definition() c.Definition {
+	return c.Definition{
+		Outputs:  []c.OutputDefinition{AvailabilityOutput, NonDegradedOutput, UpToDateOutput, SyncedOutput, DeletingOutput},
+		Children: []c.ChildBinding{c.Child(InputSchema, c.Identity)},
+	}
+}
+
 var Schema = Aggregation.Schema()
 
 // LocalChecks declares one local output with Infra's prefix-check semantics.

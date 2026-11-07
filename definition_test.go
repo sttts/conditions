@@ -127,7 +127,6 @@ func TestPublicConfigurationValidation(t *testing.T) {
 		{"duplicate output", "duplicate output", c.Definition{Outputs: []c.OutputDefinition{output, output}}},
 		{"local selector conflict", "local output", c.Definition{Outputs: []c.OutputDefinition{{Name: "Ready", LocalOnly: true, Children: c.ChildSelectorFunc(func(c.Object, c.Object) []c.Contribution { return nil })}}}},
 		{"wrong default", "default base", c.Definition{Outputs: []c.OutputDefinition{{Name: "Ready", DefaultBase: &metav1.Condition{Type: "Other"}}}}},
-		{"orphan derived contract", "has no derivation", c.Definition{Outputs: []c.OutputDefinition{{Name: "Ready", DerivedConditions: map[string]c.Spec{"Initialized": {}}}}}},
 		{"identity plus mappings", "SameNames", c.Definition{Outputs: []c.OutputDefinition{output}, Children: []c.ChildBinding{{Schema: contract("Ready", c.TrueIsGood), Classification: c.Classification{SameNames: true, Mappings: []c.Mapping{c.Map("Ready", "Ready")}}}}}},
 		{"bad literal escalation", "invalid escalation", c.Definition{Outputs: []c.OutputDefinition{output}, Children: []c.ChildBinding{c.Child(contract("Ready", c.TrueIsGood), c.Classify(c.Mapping{Source: "Ready", Target: "Ready", Overrides: []c.EscalationOverride{{Level: 99}}}))}}},
 	} {
@@ -184,5 +183,72 @@ func TestOutputCompositionValidation(t *testing.T) {
 		{"mutual cycle", "dependency cycle", []c.OutputDefinition{{Name: "Ready", Requires: []string{"Observed"}}, {Name: "Observed", Requires: []string{"Ready"}}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) { assertPanic(t, tc.want, func() { c.Define(c.Definition{Outputs: tc.outputs}) }) })
+	}
+}
+
+type declaredDerivation struct {
+	specs  map[string]c.Spec
+	values []metav1.Condition
+}
+
+func (d *declaredDerivation) Outputs() map[string]c.Spec { return d.specs }
+func (d *declaredDerivation) Derive(c.Object, time.Time) []metav1.Condition {
+	return append([]metav1.Condition(nil), d.values...)
+}
+
+func TestDerivedContractPublicationAndSnapshot(t *testing.T) {
+	reasons := map[string]c.Escalation{"InitializationFailed": c.Failed}
+	derivation := &declaredDerivation{
+		specs:  map[string]c.Spec{"Initialized": {Polarity: c.TrueIsGood, Reasons: c.ReasonClassifier{Reasons: reasons}}},
+		values: []metav1.Condition{{Type: "Initialized", Status: metav1.ConditionFalse, Reason: "InitializationFailed"}},
+	}
+	producer := c.Define(c.Definition{Outputs: []c.OutputDefinition{{Name: "Ready", Derived: []c.Derivation{derivation}}}})
+	// The derivation's map is the only declaration. Define freezes it and nested reason maps.
+	delete(derivation.specs, "Initialized")
+	derivation.specs["Injected"] = c.Spec{}
+	reasons["InitializationFailed"] = c.None
+	published := producer.Schema()
+	spec, found := published.Conditions["Initialized"]
+	if !found || spec.Polarity != c.TrueIsGood || spec.Reasons.Classify(derivation.values[0]) != c.Failed {
+		t.Fatalf("lost derived contract: %#v", published)
+	}
+	if _, found := published.Conditions["Injected"]; found {
+		t.Fatal("caller mutated output ownership")
+	}
+	parent := &object{}
+	c.Aggregate(parent, nil, producer)
+	consumer := c.Define(c.Definition{
+		Outputs:  []c.OutputDefinition{c.Output("Healthy", c.Spec{})},
+		Children: []c.ChildBinding{c.Child(published, c.Classify(c.Map("Initialized", "Healthy")))},
+	})
+	root := &object{}
+	c.AggregateSlice(root, []c.Object{parent}, consumer)
+	if value, _ := c.Lookup(root, "Healthy"); value.Status != metav1.ConditionFalse || value.Reason != "ConditionsFailed" {
+		t.Fatal(value)
+	}
+	before := append([]metav1.Condition(nil), parent.conditions...)
+	sets := parent.sets
+	derivation.values[0].Type = "Injected"
+	assertPanic(t, "undeclared", func() { c.Aggregate(parent, nil, producer) })
+	if parent.sets != sets || !reflect.DeepEqual(before, parent.conditions) {
+		t.Fatal("undeclared derived output caused partial mutation")
+	}
+}
+
+func TestDerivedContractValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name, want string
+		specs      map[string]c.Spec
+	}{
+		{"duplicate owner", "duplicate output", map[string]c.Spec{"Ready": {}}},
+		{"empty name", "invalid condition", map[string]c.Spec{"": {}}},
+		{"invalid polarity", "invalid condition", map[string]c.Spec{"Initialized": {Polarity: 99}}},
+		{"suffix output", "cannot be a suffix", map[string]c.Spec{"Initialized": {Suffix: true}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assertPanic(t, tc.want, func() {
+				c.Define(c.Definition{Outputs: []c.OutputDefinition{{Name: "Ready", Derived: []c.Derivation{&declaredDerivation{specs: tc.specs}}}}})
+			})
+		})
 	}
 }

@@ -6,6 +6,7 @@ package infra
 
 import (
 	"fmt"
+	c "github.com/sttts/conditions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"reflect"
 	"sort"
@@ -512,7 +513,9 @@ func DeriveInitialized(parent Object, now time.Time) metav1.Condition {
 type InfraInitialization struct{}
 
 // Outputs reserves Initialized for this latch, not for caller-supplied local assertions.
-func (InfraInitialization) Outputs() []string { return []string{InfraConditions.Initialized.Type} }
+func (InfraInitialization) Outputs() map[string]c.Spec {
+	return map[string]c.Spec{InfraConditions.Initialized.Type: {Polarity: TrueIsGood}}
+}
 
 func (InfraInitialization) Derive(parent Object, now time.Time) []metav1.Condition {
 	return []metav1.Condition{DeriveInitialized(parent, now)}

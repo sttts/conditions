@@ -6,7 +6,7 @@ This package publishes `Aggregation` and `Schema = Aggregation.Schema()` as ordi
 values. Consumers import `Schema`, bind it using `conditions.Child`, and choose explicit
 `Classify` mappings or `Identity`. See [schema.go](schema.go) for the definition and the
 [root README](../../README.md) for the API. Each output declares its contract and derivation together. Domain logic is ordinary Go;
-historical configurations are confined to test files and the frozen reference evaluator.
+the existing semantic and diagnostic expectations are checked directly against the public API.
 
 
 This example uses Crossplane's actual `Condition`, `ConditionedStatus`, and constructors from `crossplane-runtime/v2` v2.0.0. It supplies a representation adapter and an explicit example readiness policy to the shared root `conditions.Aggregate` implementation.

@@ -5,7 +5,6 @@ package openshift
 
 import (
 	"fmt"
-	ref "github.com/sttts/conditions/internal/testreference"
 	"reflect"
 	"testing"
 	"time"
@@ -60,19 +59,18 @@ func TestUnion(t *testing.T) {
 				t.Run(test.name, func(t *testing.T) {
 					operator := source(test.values...)
 					before := append([]operatorv1.OperatorCondition(nil), operator.Status.Conditions...)
-					selected := (OperatorConditions{typ}).Select(nil, operator)
-					rules := ref.Rules{Outputs: []ref.Rule{UnionRule(typ)}, Now: func() time.Time { return epoch }}
-					if _, err := applyDefined(t, ClusterOperator{&configv1.ClusterOperator{}}, map[string]c.Object{"operator": operator}, rules); err != nil {
-						t.Fatal(err)
-					}
-					out := (OperatorUnion{Condition: typ}).Reduce(metav1.Condition{}, nil, nil, selected)
-					transition := metav1.Time{}
+					d := definition()
+					d.Outputs = []c.OutputDefinition{unionOutput(typ.Type, c.Spec{Polarity: typ.Polarity})}
+					d.Now = func() time.Time { return epoch }
+					parent := ClusterOperator{&configv1.ClusterOperator{}}
+					c.Aggregate(parent, map[string]c.Object{"operator": operator}, c.Define(d))
+					out, _ := c.Lookup(parent, typ.Type)
+					transition := metav1.NewTime(epoch)
 					if test.age != 0 {
 						transition = metav1.NewTime(epoch.Add(-test.age))
 					}
-					want := c.Outcome{State: c.State{Assessment: test.assessment}, Reason: test.reason, Summary: test.message, LastTransitionTime: transition}
-					if !reflect.DeepEqual(out, want) {
-						t.Fatalf("got %#v, want %#v", out, want)
+					if typ.Assessment(out) != test.assessment || out.Reason != test.reason || out.Message != test.message || out.LastTransitionTime != transition {
+						t.Fatalf("unexpected condition: %#v; want assessment=%v reason=%q message=%q transition=%v", out, test.assessment, test.reason, test.message, transition)
 					}
 					if !reflect.DeepEqual(before, operator.Status.Conditions) {
 						t.Fatal("mutated native input")
@@ -100,9 +98,15 @@ func TestInertia(t *testing.T) {
 			for i, age := range test.ages {
 				values = append(values, assertion(fmt.Sprintf("%cDegraded", 'A'+i), operatorv1.ConditionTrue, "Blocked", "detail", age))
 			}
-			selected := (OperatorConditions{degraded}).Select(nil, source(values...))
-			out := (OperatorUnion{Condition: degraded, Inertia: func(metav1.Condition) time.Duration { return time.Minute }, Now: func() time.Time { return epoch }}).Reduce(metav1.Condition{}, nil, nil, selected)
-			if out.State.Assessment != test.want || out.Reason != test.reason {
+			output := unionOutput("Degraded", c.Spec{Polarity: c.FalseIsGood})
+			output.Reduction = OperatorUnion{Condition: degraded, Inertia: func(metav1.Condition) time.Duration { return time.Minute }, Now: func() time.Time { return epoch }}
+			d := definition()
+			d.Outputs = []c.OutputDefinition{output}
+			d.Now = func() time.Time { return epoch }
+			parent := ClusterOperator{&configv1.ClusterOperator{}}
+			c.Aggregate(parent, map[string]c.Object{"operator": source(values...)}, c.Define(d))
+			out, _ := c.Lookup(parent, "Degraded")
+			if degraded.Assessment(out) != test.want || out.Reason != test.reason {
 				t.Fatalf("unexpected union: %#v", out)
 			}
 		})
@@ -121,7 +125,7 @@ func TestOperatorProjectionAndRecovery(t *testing.T) {
 	cluster.Status.Conditions = []configv1.ClusterOperatorStatusCondition{{Type: "Custom", Status: configv1.ConditionTrue, Reason: "Retained"}}
 	parent := ClusterOperator{cluster}
 	children := map[string]c.Object{"Operator": operator}
-	rules := OpenShiftRules
+	rules := definition()
 	rules.Now = func() time.Time { return epoch }
 	changed, err := applyDefined(t, parent, children, rules)
 	if err != nil || !changed {
@@ -203,7 +207,7 @@ func (componentObject) GetConditions() []metav1.Condition {
 
 func TestOperandConditionsDoNotDriveOperatorStatus(t *testing.T) {
 	parent := ClusterOperator{&configv1.ClusterOperator{}}
-	_, err := applyDefined(t, parent, map[string]c.Object{"operand": &componentObject{TypeMeta: metav1.TypeMeta{APIVersion: "apps/v1", Kind: "Deployment"}}}, OpenShiftRules)
+	_, err := applyDefined(t, parent, map[string]c.Object{"operand": &componentObject{TypeMeta: metav1.TypeMeta{APIVersion: "apps/v1", Kind: "Deployment"}}}, definition())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -66,8 +66,9 @@ the native setter; `EvaluateAggregation` returns desired conditions without muta
 ## Dependencies and ownership
 
 Each output exclusively owns its named condition and the types declared by its `Derived`
-implementations. `DerivedConditions` supplies the published contracts for those types.
-Duplicate ownership, undeclared derived contracts, missing dependencies and dependency cycles
+implementations. `Derivation.Outputs()` returns `map[string]Spec`, declaring ownership and
+the published contract once. Define snapshots these maps and their reason interpretations.
+Duplicate ownership, invalid Specs, missing dependencies and dependency cycles
 are construction errors, even if no local assertion would activate the output.
 
 `Requires` exposes named dependencies' results from the current evaluation. Every output reads
@@ -138,10 +139,11 @@ must be immutable during use. Caller-contract and resolution errors precede the 
 Aggregate's bool-only signature panics on those errors; EvaluateAggregation returns errors.
 Unknown and missing conditions remain ordinary observations, not evaluation errors.
 
-Core tests exercise both public definitions and the internal evaluator. Example tests retain
-old configurations in `_test.go` files and compare new output definitions against the frozen
-`internal/testreference` evaluator. No production package imports that reference evaluator.
-Cross-module tests compose published output values and consume published schemas.
+Core tests exercise both public definitions and the internal evaluator. Example tests check
+the original semantic and message fixtures directly through the public API. There is no
+parallel legacy configuration or second evaluator. Cross-module tests compose published
+output values and consume published schemas. Derived-contract tests cover publication,
+snapshot isolation, invalid ownership and atomic rejection of undeclared results.
 
 Provenance-aware mixed-format promotion, freshness policies and large-fan-out performance
 validation remain future work.

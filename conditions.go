@@ -72,10 +72,12 @@ type Conditioned interface {
 }
 
 // Derivation derives owned Conditions after its aggregation produces an output.
-// Outputs declares exclusive ownership, including when Derive returns no value.
-// Implementations must be pure and declare a stable set of output types.
+// Outputs declares exclusive ownership and the published Spec of each output,
+// including when Derive returns no value.
+// Define snapshots this contract. Implementations must be pure and return only
+// conditions declared by that snapshot.
 type Derivation interface {
-	Outputs() []string
+	Outputs() map[string]Spec
 	Derive(parent Object, now time.Time) []metav1.Condition
 }
 

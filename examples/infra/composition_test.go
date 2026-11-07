@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestExplicitlegacyLocalChecks(t *testing.T) {
+func TestExplicitLocalChecks(t *testing.T) {
 	parent := referenceParent(t, metav1.Condition{Type: "CustomHealth", Status: metav1.ConditionFalse, Reason: "HealthFailed", Message: "broken"})
 	aggregation := c.Define(c.Definition{Outputs: []c.OutputDefinition{LocalChecks("Custom")}})
 	c.Aggregate(parent, nil, aggregation, metav1.Condition{Type: "Custom", Status: metav1.ConditionTrue, Reason: "Passed"})
@@ -28,7 +28,7 @@ func TestInfraCompositionIsOrderIndependent(t *testing.T) {
 		t.Run(f.Name, func(t *testing.T) {
 			a, children := fixtureObjects(f)
 			b, _ := fixtureObjects(f)
-			rules := InfraRules
+			rules := definition()
 			rules.Now = fixtureNow
 			reversed := rules
 			reversed.Outputs = slices.Clone(rules.Outputs)

@@ -28,7 +28,7 @@ func (selectReady) Select(parent c.Object) []c.Contribution {
 
 type initialization struct{}
 
-func (initialization) Outputs() []string { return []string{"Initialized"} }
+func (initialization) Outputs() map[string]c.Spec { return map[string]c.Spec{"Initialized": {}} }
 func (initialization) Derive(parent c.Object, now time.Time) []metav1.Condition {
 	value, _ := c.Lookup(parent, "Ready")
 	return []metav1.Condition{{Type: "Initialized", Status: value.Status, Reason: "Initialized", LastTransitionTime: metav1.NewTime(now)}}
@@ -36,7 +36,7 @@ func (initialization) Derive(parent c.Object, now time.Time) []metav1.Condition 
 
 type dishonestDerivation struct{}
 
-func (dishonestDerivation) Outputs() []string { return []string{"Initialized"} }
+func (dishonestDerivation) Outputs() map[string]c.Spec { return map[string]c.Spec{"Initialized": {}} }
 func (dishonestDerivation) Derive(c.Object, time.Time) []metav1.Condition {
 	return []metav1.Condition{{Type: "Ready", Status: metav1.ConditionFalse, Reason: "Undeclared"}}
 }
@@ -51,7 +51,7 @@ func TestUndeclaredDerivationWriteIsAtomic(t *testing.T) {
 
 type derivedFrom struct{ output, input string }
 
-func (d derivedFrom) Outputs() []string { return []string{d.output} }
+func (d derivedFrom) Outputs() map[string]c.Spec { return map[string]c.Spec{d.output: {}} }
 func (d derivedFrom) Derive(parent c.Object, now time.Time) []metav1.Condition {
 	value, _ := c.Lookup(parent, d.input)
 	value.Type = d.output

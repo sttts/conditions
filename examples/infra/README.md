@@ -89,8 +89,11 @@ format contract is in [FORMATS.md](../../FORMATS.md).
 go test -race ./...
 ```
 
-The caller corpus and reference fixtures compare native status, reasons, messages and metadata
-with the new definitions, including recovery and repeat calls. Historical rule configurations
-and their facade exist only in `legacy_test.go`. The frozen evaluator lives in
-`internal/testreference`; production code does not import it. The executable example uses
-only Define and Aggregate.
+The caller corpus and reference fixtures check native status, reasons, messages and metadata
+directly through Define and Aggregate/EvaluateAggregation, including recovery and repeat
+calls. Original case names and expected values remain the oracle; there is no old evaluator
+or parallel configuration. For explicitly sequenced corpus steps, the single-output helper
+reads the supplied snapshot and leaves Initialized to its explicit fixture step.
+
+InfraInitialization declares `Initialized` and its Spec in `Outputs()`. Availability references
+that derivation once; its contract is automatically included in the published Schema.

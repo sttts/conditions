@@ -6,7 +6,7 @@ This package publishes `Aggregation` and `Schema = Aggregation.Schema()` as ordi
 values. Consumers import `Schema`, bind it using `conditions.Child`, and choose explicit
 `Classify` mappings or `Identity`. See [schema.go](schema.go) for the definition and the
 [root README](../../README.md) for the API. Each output declares its contract and derivation together. Domain logic is ordinary Go;
-historical configurations are confined to test files and the frozen reference evaluator.
+the existing semantic and diagnostic expectations are checked directly against the public API.
 
 
 This example aggregates **operator status**, using native OpenShift API types. Several controllers publish assertions such as `ConfigDegraded` and `RouteDegraded` in one operator configuration object's `status.conditions`. The caller supplies that operator to `Aggregate`; the rules produce the four independent Conditions of a `config.openshift.io/v1 ClusterOperator`.

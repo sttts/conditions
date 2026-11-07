@@ -31,7 +31,7 @@ func plan(rules evaluationPlan) ([]compiledRule, map[string]string, error) {
 			if isNil(derivation) {
 				return nil, nil, fmt.Errorf("nil derivation for %q", name)
 			}
-			for _, output := range derivation.Outputs() {
+			for output := range derivation.Outputs() {
 				if output == "" {
 					return nil, nil, fmt.Errorf("empty derived output for %q", name)
 				}
@@ -137,7 +137,7 @@ func evaluate(parent Object, children map[string]Object, rules evaluationPlan, l
 		view.SetConditions(*value)
 		for _, derivation := range rule.Derived {
 			declared := map[string]bool{}
-			for _, name := range derivation.Outputs() {
+			for name := range derivation.Outputs() {
 				declared[name] = true
 			}
 			for _, derived := range derivation.Derive(view, now) {

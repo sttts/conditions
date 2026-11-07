@@ -5,25 +5,16 @@ package crossplane
 
 import (
 	c "github.com/sttts/conditions"
-	ref "github.com/sttts/conditions/internal/testreference"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"reflect"
-	"sort"
 	"testing"
 )
 
-func applyDefined(t *testing.T, parent c.Conditioned, children map[string]c.Object, rules ref.Rules, local ...metav1.Condition) (bool, error) {
+// Apply the public API directly; fixture expectations are the independent oracle.
+func applyDefined(t *testing.T, parent c.Conditioned, children map[string]c.Object, d c.Definition, local ...metav1.Condition) (bool, error) {
 	t.Helper()
-	want, err := ref.Evaluate(parent, children, rules, local...)
+	desired, err := c.EvaluateAggregation(parent, children, c.Define(d), local...)
 	if err != nil {
 		return false, err
 	}
-	changed := c.Aggregate(parent, children, defineAggregation(rules.Now), local...)
-	got := parent.GetConditions()
-	sort.Slice(got, func(i, j int) bool { return got[i].Type < got[j].Type })
-	sort.Slice(want, func(i, j int) bool { return want[i].Type < want[j].Type })
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Define changed native result:\ngot  %#v\nwant %#v", parent.GetConditions(), want)
-	}
-	return changed, nil
+	return parent.SetConditions(desired), nil
 }

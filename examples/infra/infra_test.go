@@ -164,7 +164,7 @@ func fixtureNow() time.Time { return time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)
 // The corpus supplies caller steps explicitly; each pure evaluation receives the resource objects.
 func TestInfraSemanticCorpus(t *testing.T) {
 	fixtures, _ := loadFixtures(t)
-	aggregations := map[string]Rule{"available": InfraAvailability, "nonDegraded": InfraNonDegraded, "upToDate": InfraUpToDate, "synced": InfraSynced, "deleting": InfraDeleting}
+	aggregations := map[string]c.OutputDefinition{"available": AvailabilityOutput, "nonDegraded": NonDegradedOutput, "upToDate": UpToDateOutput, "synced": SyncedOutput, "deleting": DeletingOutput}
 	for _, f := range fixtures {
 		t.Run(f.Name, func(t *testing.T) {
 			parent, children := fixtureObjects(f)
@@ -179,7 +179,7 @@ func TestInfraSemanticCorpus(t *testing.T) {
 				}
 				var base *metav1.Condition
 				for i := range f.Bases {
-					if f.Bases[i].Type == aggregation.Output.Type {
+					if f.Bases[i].Type == aggregation.Name {
 						base = &f.Bases[i]
 						break
 					}
@@ -190,7 +190,7 @@ func TestInfraSemanticCorpus(t *testing.T) {
 				if base == nil {
 					continue
 				}
-				result, err := aggregation.Evaluate(parent, children, *base, fixtureNow())
+				result, err := evaluateOutput(aggregation, parent, children, *base, fixtureNow())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -223,19 +223,19 @@ func assertExpected(t *testing.T, f semanticFixture, parent Getter) {
 	}
 }
 
-// The facade applies Conditions in memory and reports no change on repeated identical input.
+// The public aggregation applies Conditions and reports no change on repeated identical input.
 func TestInfraCallerCorpus(t *testing.T) {
 	fixtures, _ := loadFixtures(t)
-	profile := Infra
-	profile.Rules.Now = fixtureNow
+	d := definition()
+	d.Now = fixtureNow
 	for _, f := range fixtures {
 		t.Run(f.Name, func(t *testing.T) {
 			parent, children := fixtureObjects(f)
-			if _, err := applyDefined(t, parent, children, profile.Rules, f.Bases...); err != nil {
+			if _, err := applyDefined(t, parent, children, d, f.Bases...); err != nil {
 				t.Fatal(err)
 			}
 			assertExpected(t, f, parent)
-			if changed, err := profile.ApplyRules(parent, children, f.Bases...); err != nil || changed {
+			if changed, err := applyDefined(t, parent, children, d, f.Bases...); err != nil || changed {
 				t.Fatalf("second call: changed=%v err=%v", changed, err)
 			}
 		})
@@ -263,9 +263,10 @@ func TestInfraOutputPolarity(t *testing.T) {
 			if healthy {
 				setConditions(children["Worker"].(Conditioned), metav1.Condition{Type: "Available", Status: metav1.ConditionTrue, Reason: "Available"})
 			}
-			aggregation := InfraAvailability
-			aggregation.Output = ConditionType{Type: "Result", Polarity: polarity}
-			got, err := aggregation.Evaluate(parent, children, fixtures[0].Bases[0], fixtureNow())
+			aggregation := AvailabilityOutput
+			aggregation.Name = "Result"
+			aggregation.Spec.Polarity = polarity
+			got, err := evaluateOutput(aggregation, parent, children, fixtures[0].Bases[0], fixtureNow())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -340,24 +341,24 @@ func Example_infra() {
 
 func TestCompatibleCompositionAndRecovery(t *testing.T) {
 	ready := ConditionType{Type: "Ready", Polarity: TrueIsGood}
-	first := Rule{
-		Output: ready,
+	first := c.OutputDefinition{
+		Name: ready.Type, Spec: c.Spec{Polarity: ready.Polarity},
 		Parent: LocalBaseFirst{Base: ready},
 		Children: ServingChildren{Inputs: InfraConditions, Condition: InfraConditions.Available,
 			Classifier: ReasonClassifier{Reasons: map[string]Escalation{"DependencyFailed": Failed}}, False: Always{}, Failure: Always{}},
 		Reduction: ParentChildReduction{Output: ready, BadSuffix: "NotReady"},
 		Formatter: BoundedMessages{MaxLines: 7},
 	}
-	second := Rule{
-		Output: ready,
+	second := c.OutputDefinition{
+		Name: ready.Type, Spec: c.Spec{Polarity: ready.Polarity},
 		Parent: LocalBaseFirst{Base: ready},
 		Children: ServingChildren{Inputs: InfraConditions, Condition: ready,
 			Classifier: ReasonClassifier{Reasons: map[string]Escalation{"ChildrenFailed": Failed}}, False: Always{}, Failure: Always{}},
 		Reduction: ParentChildReduction{Output: ready, BadSuffix: "NotReady"},
 		Formatter: BoundedMessages{MaxLines: 1},
 	}
-	rulesA := Rules{Outputs: []Rule{first}, Now: fixtureNow}
-	rulesB := Rules{Outputs: []Rule{second}, Now: fixtureNow}
+	rulesA := c.Definition{Children: []c.ChildBinding{c.Child(InputSchema, c.Classify())}, Outputs: []c.OutputDefinition{first}, Now: fixtureNow}
+	rulesB := c.Definition{Children: []c.ChildBinding{c.Child(InputSchema, c.Classify())}, Outputs: []c.OutputDefinition{second}, Now: fixtureNow}
 	previous, previousGrandparent := &exampleResource{}, &exampleResource{}
 	for _, healthy := range []bool{false, true} {
 		input := metav1.Condition{Type: "Available", Status: metav1.ConditionFalse, Reason: "DependencyFailed", Message: "Required dependency could not initialize"}
@@ -367,12 +368,12 @@ func TestCompatibleCompositionAndRecovery(t *testing.T) {
 		dependency := &exampleResource{Status: exampleStatus{Conditions: []metav1.Condition{input}}}
 		other := &exampleResource{Status: exampleStatus{Conditions: []metav1.Condition{{Type: "Available", Status: metav1.ConditionTrue}, {Type: "Ready", Status: metav1.ConditionTrue}}}}
 		base := metav1.Condition{Type: "Ready", Status: metav1.ConditionTrue, Reason: "Ready"}
-		desiredA, err := Evaluate(previous, map[string]Object{"Dependency": dependency, "Other": other}, rulesA, base)
+		desiredA, err := c.EvaluateAggregation(previous, map[string]Object{"Dependency": dependency, "Other": other}, c.Define(rulesA), base)
 		if err != nil {
 			t.Fatal(err)
 		}
 		parent := &exampleResource{Status: exampleStatus{Conditions: desiredA}}
-		desiredB, err := Evaluate(previousGrandparent, map[string]Object{"Parent": parent, "Other": other}, rulesB, base)
+		desiredB, err := c.EvaluateAggregation(previousGrandparent, map[string]Object{"Parent": parent, "Other": other}, c.Define(rulesB), base)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -392,24 +393,25 @@ func TestCompatibleCompositionAndRecovery(t *testing.T) {
 	}
 }
 
-// Profile evaluation stages all outputs before applying any changes to the actual parent.
-func TestInfraEvaluationAndFailedConfigurationDoNotMutate(t *testing.T) {
+// Pure evaluation and failed local-input validation do not mutate the actual parent.
+func TestInfraEvaluationAndFailedInputDoNotMutate(t *testing.T) {
 	fixtures, _ := loadFixtures(t)
 	parent, children := fixtureObjects(fixtures[0])
 	previous := append([]metav1.Condition(nil), parent.GetConditions()...)
-	profile := Infra
-	profile.Rules.Now = fixtureNow
-	if _, err := profile.Evaluate(parent, children, fixtures[0].Bases...); err != nil {
+	d := definition()
+	d.Now = fixtureNow
+	if _, err := c.EvaluateAggregation(parent, children, c.Define(d), fixtures[0].Bases...); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(previous, parent.GetConditions()) {
 		t.Fatal("pure evaluation mutated parent")
 	}
-	profile.Rules.Outputs = append([]Rule(nil), profile.Rules.Outputs...)
-	profile.Rules.Outputs[0] = Rule{}
-	if changed, err := profile.ApplyRules(parent, children, metav1.Condition{Type: "Synced", Status: metav1.ConditionTrue, Reason: "Synced"}, fixtures[0].Bases[0]); err == nil || changed {
-		t.Fatalf("invalid configuration: changed=%v err=%v", changed, err)
+	aggregation := c.Define(d)
+	duplicate := fixtures[0].Bases[0]
+	if _, err := c.EvaluateAggregation(parent, children, aggregation, duplicate, duplicate); err == nil {
+		t.Fatal("duplicate local assertion accepted")
 	}
+
 	if !reflect.DeepEqual(previous, parent.GetConditions()) {
 		t.Fatal("failed evaluation partially changed parent")
 	}
@@ -419,7 +421,7 @@ func TestInfraNilChildrenAndNoSync(t *testing.T) {
 	parent := &exampleResource{}
 	var absent *exampleResource
 	children := map[string]Object{"Absent": absent, "Worker": &exampleResource{Status: exampleStatus{Conditions: []metav1.Condition{{Type: "Available", Status: metav1.ConditionTrue}}}}}
-	result, err := InfraAvailability.Evaluate(parent, children, metav1.Condition{Type: "Available", Status: metav1.ConditionTrue, Reason: "Available"}, fixtureNow())
+	result, err := evaluateOutput(AvailabilityOutput, parent, children, metav1.Condition{Type: "Available", Status: metav1.ConditionTrue, Reason: "Available"}, fixtureNow())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,12 +431,13 @@ func TestInfraNilChildrenAndNoSync(t *testing.T) {
 }
 
 // The generic entry point also evaluates unrelated names and a negative parent polarity.
-func TestGenericAggregateUsesOnlySuppliedRules(t *testing.T) {
+func TestGenericAggregateUsesOnlySuppliedOutputs(t *testing.T) {
 	output := ConditionType{Type: "Faulted", Polarity: FalseIsGood}
 	input := ConditionType{Type: "Accepting", Polarity: TrueIsGood}
-	rules := Rules{
-		Outputs: []Rule{{
-			Output: output,
+	rules := c.Definition{
+		Children: []c.ChildBinding{c.Child(InputSchema, c.Classify())},
+		Outputs: []c.OutputDefinition{{
+			Name: output.Type, Spec: c.Spec{Polarity: output.Polarity},
 			Parent: LocalBaseFirst{Base: output},
 			Children: ServingChildren{Condition: input,
 				Classifier: ReasonClassifier{Reasons: map[string]Escalation{"DependencyFailed": Failed}},
@@ -450,7 +453,7 @@ func TestGenericAggregateUsesOnlySuppliedRules(t *testing.T) {
 	}}}
 	local := metav1.Condition{Type: "Faulted", Status: metav1.ConditionFalse, Reason: "Accepting"}
 	children := map[string]Object{"Worker": worker}
-	changed, err := ApplyRules(parent, children, rules, local)
+	changed, err := applyDefined(t, parent, children, rules, local)
 	if err != nil || !changed {
 		t.Fatalf("failed input: changed=%v err=%v", changed, err)
 	}
@@ -458,11 +461,11 @@ func TestGenericAggregateUsesOnlySuppliedRules(t *testing.T) {
 	if condition.Status != metav1.ConditionTrue || condition.Reason != "WorkerFailed" {
 		t.Fatalf("failed input: %+v", condition)
 	}
-	if changed, err := ApplyRules(parent, children, rules, local); err != nil || changed {
+	if changed, err := applyDefined(t, parent, children, rules, local); err != nil || changed {
 		t.Fatalf("identical input: changed=%v err=%v", changed, err)
 	}
 	setConditions(worker, metav1.Condition{Type: "Accepting", Status: metav1.ConditionTrue, Reason: "Accepting"})
-	if changed, err := ApplyRules(parent, children, rules, local); err != nil || !changed {
+	if changed, err := applyDefined(t, parent, children, rules, local); err != nil || !changed {
 		t.Fatalf("healthy input: changed=%v err=%v", changed, err)
 	}
 	condition, _ = Lookup(parent, "Faulted")

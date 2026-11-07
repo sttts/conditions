@@ -31,19 +31,18 @@ type Definition struct {
 // original objects and owns their interpretation, subject to the same binding scopes.
 // Callbacks and interface implementations must be read-only and concurrency-safe.
 type OutputDefinition struct {
-	Name              string
-	Spec              Spec
-	LocalOnly         bool
-	Requires          []string
-	DefaultBase       *metav1.Condition
-	Parent            ParentPolicy
-	LocalChecks       LocalSelector
-	Children          ChildSelector
-	Reduction         Reducer
-	Formatter         Formatter
-	Generation        GenerationPolicy
-	Derived           []Derivation
-	DerivedConditions map[string]Spec
+	Name        string
+	Spec        Spec
+	LocalOnly   bool
+	Requires    []string
+	DefaultBase *metav1.Condition
+	Parent      ParentPolicy
+	LocalChecks LocalSelector
+	Children    ChildSelector
+	Reduction   Reducer
+	Formatter   Formatter
+	Generation  GenerationPolicy
+	Derived     []Derivation
 }
 
 // Output declares an output with its published interpretation, exactly once.
@@ -91,7 +90,8 @@ func Define(d Definition) *Aggregation {
 		}
 		s.Conditions[name] = spec
 	}
-	for _, o := range d.Outputs {
+	derived := make([][]Derivation, len(d.Outputs))
+	for i, o := range d.Outputs {
 		if o.Children != nil && isNil(o.Children) || o.LocalChecks != nil && isNil(o.LocalChecks) {
 			panic("conditions: nil output selector")
 		}
@@ -106,24 +106,15 @@ func Define(d Definition) *Aggregation {
 			spec.Reasons = aggregateClassifier{fallback: spec.Reasons}
 		}
 		add(o.Name, spec)
-		derived := map[string]bool{}
 		for _, derivation := range o.Derived {
 			if isNil(derivation) {
 				panic("conditions: nil derivation")
 			}
-			for _, name := range derivation.Outputs() {
-				spec, ok := o.DerivedConditions[name]
-				if !ok {
-					panic(fmt.Sprintf("conditions: undeclared derived output %q", name))
-				}
+			outputs := cloneSchema(Schema{Conditions: derivation.Outputs()}).Conditions
+			for name, spec := range outputs {
 				add(name, spec)
-				derived[name] = true
 			}
-		}
-		for name := range o.DerivedConditions {
-			if !derived[name] {
-				panic(fmt.Sprintf("conditions: condition %q has no derivation", name))
-			}
+			derived[i] = append(derived[i], compiledDerivation{Derivation: derivation, outputs: outputs})
 		}
 	}
 	s = cloneSchema(s)
@@ -143,11 +134,11 @@ func Define(d Definition) *Aggregation {
 			}
 		}
 	}
-	for _, o := range d.Outputs {
+	for i, o := range d.Outputs {
 		spec := s.Conditions[o.Name]
 		typ := ConditionType{Type: o.Name, Polarity: spec.Polarity}
 		rule := compiledRule{
-			Output: typ, Requires: append([]string(nil), o.Requires...), Derived: append([]Derivation(nil), o.Derived...),
+			Output: typ, Requires: append([]string(nil), o.Requires...), Derived: derived[i],
 			Parent: o.Parent, Local: o.LocalChecks, Children: o.Children,
 			Reduction: o.Reduction, Formatter: o.Formatter, Generation: o.Generation,
 		}
@@ -193,6 +184,15 @@ func Define(d Definition) *Aggregation {
 	}
 	return a
 }
+
+// compiledDerivation freezes the ownership contract at Define time while retaining
+// the user's ordinary Go implementation of Derive.
+type compiledDerivation struct {
+	Derivation
+	outputs map[string]Spec
+}
+
+func (d compiledDerivation) Outputs() map[string]Spec { return d.outputs }
 
 func (a *Aggregation) child(object Object) (*compiledChild, error) {
 	// Global-only definitions need no API identity (including non-runtime adapters).

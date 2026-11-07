@@ -14,12 +14,21 @@ import (
 	c "github.com/sttts/conditions"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // Operator adapts the native status of an existing OpenShift operator configuration object.
 type Operator struct {
 	metav1.Object
 	Status *operatorv1.OperatorStatus
+}
+
+// GetObjectKind forwards API identity supplied with the native object.
+func (o Operator) GetObjectKind() schema.ObjectKind {
+	if typed, ok := o.Object.(interface{ GetObjectKind() schema.ObjectKind }); ok {
+		return typed.GetObjectKind()
+	}
+	return schema.EmptyObjectKind
 }
 
 // GetConditions translates operator assertions without assigning status-level generation to them.
@@ -58,24 +67,6 @@ func (o ClusterOperator) SetConditions(values []metav1.Condition) bool {
 	}
 	o.Status.Conditions = desired
 	return true
-}
-
-// OperatorConditions selects every matching controller assertion from native operator status.
-type OperatorConditions struct{ Condition c.ConditionType }
-
-// Select accepts native operator status and retains every assertion matching the configured suffix.
-func (p OperatorConditions) Select(_ c.Object, child c.Object) []c.Contribution {
-	if _, ok := child.(Operator); !ok {
-		return nil
-	}
-	var result []c.Contribution
-	for _, value := range child.GetConditions() {
-		if strings.HasSuffix(value.Type, p.Condition.Type) {
-			result = append(result, c.Contribution{State: c.State{Assessment: p.Condition.Assessment(value)},
-				Condition: value, Source: child})
-		}
-	}
-	return result
 }
 
 // OperatorUnion expresses library-go's suffix union, including optional bad-state inertia.
@@ -167,7 +158,6 @@ func latestTransition(selected []c.Contribution) metav1.Time {
 type UnionMessages struct{}
 
 func (UnionMessages) Format(summary string, _ []c.Cause) string { return summary }
-func (UnionMessages) Inline(value metav1.Condition) string      { return value.Message }
 
 var (
 	available   = c.ConditionType{Type: "Available", Polarity: c.TrueIsGood}
@@ -175,22 +165,6 @@ var (
 	degraded    = c.ConditionType{Type: "Degraded", Polarity: c.FalseIsGood}
 	upgradeable = c.ConditionType{Type: "Upgradeable", Polarity: c.TrueIsGood}
 )
-
-// OpenShiftRules projects four independent operator-status unions without enabling inertia by default.
-var OpenShiftRules = c.Rules{Outputs: []c.Aggregation{
-	{Output: available, DefaultBase: &metav1.Condition{Type: "Available"}, Parent: c.ChildrenOnly{},
-		Children: OperatorConditions{available}, Reduction: OperatorUnion{Condition: available},
-		Messages: UnionMessages{}, Generation: c.NoObservedGeneration},
-	{Output: progressing, DefaultBase: &metav1.Condition{Type: "Progressing"}, Parent: c.ChildrenOnly{},
-		Children: OperatorConditions{progressing}, Reduction: OperatorUnion{Condition: progressing},
-		Messages: UnionMessages{}, Generation: c.NoObservedGeneration},
-	{Output: degraded, DefaultBase: &metav1.Condition{Type: "Degraded"}, Parent: c.ChildrenOnly{},
-		Children: OperatorConditions{degraded}, Reduction: OperatorUnion{Condition: degraded},
-		Messages: UnionMessages{}, Generation: c.NoObservedGeneration},
-	{Output: upgradeable, DefaultBase: &metav1.Condition{Type: "Upgradeable"}, Parent: c.ChildrenOnly{},
-		Children: OperatorConditions{upgradeable}, Reduction: OperatorUnion{Condition: upgradeable},
-		Messages: UnionMessages{}, Generation: c.NoObservedGeneration},
-}}
 
 var (
 	_ c.Object      = Operator{}

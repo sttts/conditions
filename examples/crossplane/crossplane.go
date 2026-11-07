@@ -52,18 +52,6 @@ func ToCondition(value xpv1.Condition) metav1.Condition {
 		ObservedGeneration: value.ObservedGeneration}
 }
 
-// ReadyChildren selects readiness independently of each child's reconciliation status.
-type ReadyChildren struct{}
-
-// Select reads only Ready and supplies an explicit unknown contribution when it is missing.
-func (ReadyChildren) Select(_ c.Object, child c.Object) []c.Contribution {
-	value, found := c.Lookup(child, string(xpv1.TypeReady))
-	if !found {
-		value.Reason, value.Message = "ConditionMissing", "Ready condition has not been reported"
-	}
-	return []c.Contribution{{State: c.State{Assessment: ready.Assessment(value)}, Condition: value, Source: child}}
-}
-
 // Readiness combines readiness assertions without inventing failure escalation from Crossplane reasons.
 type Readiness struct{}
 
@@ -103,12 +91,5 @@ func (Readiness) Reduce(base metav1.Condition, _ map[string]c.Object, _, selecte
 }
 
 var ready = c.ConditionType{Type: string(xpv1.TypeReady), Polarity: c.TrueIsGood}
-
-// CrossplaneRules rolls child Ready assertions up while leaving Synced as an independent local assertion.
-var CrossplaneRules = c.Rules{Outputs: []c.Aggregation{{
-	Output: ready, Parent: c.LocalBaseFirst{Base: ready}, Children: ReadyChildren{}, Reduction: Readiness{},
-	DefaultBase: &metav1.Condition{Type: string(xpv1.TypeReady), Status: metav1.ConditionTrue, Reason: string(xpv1.ReasonAvailable)},
-	Messages:    c.BoundedMessages{MaxLines: 7},
-}}}
 
 var _ c.Conditioned = Adapter{}

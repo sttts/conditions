@@ -11,7 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func ExampleAggregate() {
+func ExampleAggregate_customReducer() {
 	parent := &exampleResource{ObjectMeta: metav1.ObjectMeta{Name: "application", Generation: 7}}
 	database := &exampleResource{ObjectMeta: metav1.ObjectMeta{Name: "database", Generation: 3},
 		Conditions: []metav1.Condition{{Type: "Ready", Status: metav1.ConditionFalse,
@@ -19,14 +19,16 @@ func ExampleAggregate() {
 	localReady := metav1.Condition{Type: "Ready", Status: metav1.ConditionTrue, Reason: "LocalChecksPassed"}
 	changed, err := updateReadiness(parent, database, localReady)
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		return
 	}
 	ready, _ := conditions.Lookup(parent, "Ready")
 	fmt.Printf("changed=%t, Ready=%s, reason=%s\n", changed, ready.Status, ready.Reason)
 	fmt.Println(ready.Message)
 	changed, err = updateReadiness(parent, database, localReady)
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		return
 	}
 	fmt.Printf("same observations: changed=%t\n", changed)
 	// Output:
@@ -43,23 +45,12 @@ func updateReadiness(
 	localReady metav1.Condition,
 ) (bool, error) {
 	ready := conditions.ConditionType{Type: "Ready", Polarity: conditions.TrueIsGood}
-
-	// Application policy: select child Ready and require all selected children to be ready.
 	policy := readiness{Condition: ready}
-	rules := conditions.Rules{Outputs: []conditions.Aggregation{{
-		Output:    ready,
-		Parent:    conditions.LocalBaseFirst{Base: ready},
-		Children:  policy,
-		Reduction: policy,
-		Messages:  conditions.MultilineMessages{MaxLines: 7},
-	}}}
-
-	// The controller supplies existing objects and its already-computed local Ready assertion.
-	return conditions.Aggregate(parent,
-		map[string]conditions.Object{"database": database},
-		rules,
-		localReady,
-	)
+	aggregation := conditions.Define(conditions.Definition{
+		Outputs:  []conditions.OutputDefinition{{Name: "Ready", Spec: conditions.Spec{Polarity: conditions.TrueIsGood}, Children: policy, Reduction: policy, Formatter: conditions.MultilineMessages{MaxLines: 7}}},
+		Children: []conditions.ChildBinding{conditions.Child(conditions.Schema{}, conditions.Classify())},
+	})
+	return conditions.Aggregate(parent, map[string]conditions.Object{"database": database}, aggregation, localReady)
 }
 
 // END README_USAGE

@@ -1,5 +1,14 @@
 # OpenShift operator Conditions
 
+## Schema API
+
+This package publishes `Aggregation` and `Schema = Aggregation.Schema()` as ordinary global
+values. Consumers import `Schema`, bind it using `conditions.Child`, and choose explicit
+`Classify` mappings or `Identity`. See [schema.go](schema.go) for the definition and the
+[root README](../../README.md) for the API. Each output declares its contract and derivation together. Domain logic is ordinary Go;
+the existing semantic and diagnostic expectations are checked directly against the public API.
+
+
 This example aggregates **operator status**, using native OpenShift API types. Several controllers publish assertions such as `ConfigDegraded` and `RouteDegraded` in one operator configuration object's `status.conditions`. The caller supplies that operator to `Aggregate`; the rules produce the four independent Conditions of a `config.openshift.io/v1 ClusterOperator`.
 
 The inputs are the operator's already-computed assertions. This package does not inspect Pods, Deployments, or operand/component Conditions. The negative `Degraded` flag describes the operator's inability to fulfill intent; it is not an aggregation of every operand's readiness.
@@ -19,7 +28,7 @@ The four unions do not depend on an Initialized or Synced Condition and do not i
 
 ### Mappings and rule data
 
-[`OpenShiftRules`](openshift.go) expresses the suffix-union behavior of library-go's [`UnionCondition` and `UnionClusterCondition`](https://github.com/openshift/library-go/blob/release-4.19/pkg/operator/status/condition.go). The upstream [`StatusSyncer`](https://github.com/openshift/library-go/blob/release-4.19/pkg/operator/status/status_controller.go) uses these unions to project operator status to ClusterOperator status.
+[`Aggregation`](openshift.go) expresses the suffix-union behavior of library-go's [`UnionCondition` and `UnionClusterCondition`](https://github.com/openshift/library-go/blob/release-4.19/pkg/operator/status/condition.go). The upstream [`StatusSyncer`](https://github.com/openshift/library-go/blob/release-4.19/pkg/operator/status/status_controller.go) uses these unions to project operator status to ClusterOperator status.
 
 | Output | Matching operator Conditions | Good status |
 | --- | --- | --- |
@@ -30,22 +39,11 @@ The four unions do not depend on an Initialized or Synced Condition and do not i
 
 The source and output polarities match for each row. For example, ConfigDegraded=True is a normalized bad contribution and produces Degraded=True. No matching Upgradeable assertion produces Unknown, rather than assuming that upgrades are permitted.
 
-The Degraded entry in the complete rule set has this shape. Here `c` imports the root library, `openshift` imports this example module, and `metav1` imports API machinery's metadata package:
-
-```go
-degraded := c.ConditionType{Type: "Degraded", Polarity: c.FalseIsGood}
-rule := c.Aggregation{
-    Output:      degraded,
-    DefaultBase: &metav1.Condition{Type: "Degraded"},
-    Parent:      c.ChildrenOnly{},
-    Children:    openshift.OperatorConditions{Condition: degraded},
-    Reduction:   openshift.OperatorUnion{Condition: degraded},
-    Messages:    openshift.UnionMessages{},
-    Generation:  c.NoObservedGeneration,
-}
-```
-
-`OperatorConditions` and `OperatorUnion` are this example's policy implementations. `ChildrenOnly` supplies the library's no-local-precedence policy. The default base activates the output without a local argument; it is not an assertion of success. The reducer determines NoData/Unknown from the selected inputs. The other three outputs use the same pattern with the condition type and polarity from the table.
+The output definitions live in [schema.go](schema.go). Each declares its Spec, native
+OperatorUnion reducer, UnionMessages formatter and generation policy. Child bindings use
+OperatorSchema with Identity classification. A custom ChildrenOnly parent policy and an
+explicit empty default base schedule each union without requiring a local assertion.
+The reducer determines NoData/Unknown from the selected observations.
 
 ### Reduction and diagnostics
 
@@ -53,7 +51,7 @@ Each output is independent. Missing matching inputs produce `Unknown/NoData`, in
 
 Bad assertions are sorted by type. Reasons strip the suffix, append the source reason, and join with `::`; message lines retain their complete source Condition type. Duplicate lines are removed within one assertion, not across different assertions. Good unions preserve the input message order. These are native OpenShift presentation rules, implemented by this profile, rather than a new generic native-message codec.
 
-`OperatorUnion.Inertia` optionally delays an adverse union. As upstream, an assertion must be strictly older than its configured duration; once any adverse assertion qualifies, all adverse assertions participate. `OpenShiftRules` leaves inertia disabled. Inertia never changes the producer's supplied Condition. Tests inject a clock and cover the threshold and mixed old/young case.
+`OperatorUnion.Inertia` optionally delays an adverse union. As upstream, an assertion must be strictly older than its configured duration; once any adverse assertion qualifies, all adverse assertions participate. `Aggregation` leaves inertia disabled. Inertia never changes the producer's supplied Condition. Tests inject a clock and cover the threshold and mixed old/young case.
 
 The example pins `openshift/api` at the release-4.19-compatible revision in [go.mod](go.mod); it does not depend on library-go or a Kubernetes client. [`OperatorCondition`](https://github.com/openshift/api/blob/1ebdd7bba8e6/operator/v1/types.go) and [`ClusterOperatorStatusCondition`](https://github.com/openshift/api/blob/1ebdd7bba8e6/config/v1/types_cluster_operator.go) have no per-condition observed generation. The adapter preserves status-level `observedGeneration` separately. `NoObservedGeneration` avoids manufacturing a field the output schema cannot retain. New output transitions use the union's latest source time when supplied, otherwise the evaluation clock; message-only updates preserve the previous output transition time.
 
@@ -70,7 +68,7 @@ changed, err := c.Aggregate(
             Status: &operator.Status.OperatorStatus,
         },
     },
-    openshift.OpenShiftRules,
+    openshift.Aggregation,
 )
 ```
 

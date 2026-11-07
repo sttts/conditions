@@ -23,7 +23,7 @@ func assertion(typ string, status operatorv1.ConditionStatus, reason, message st
 }
 
 func source(values ...operatorv1.OperatorCondition) Operator {
-	operator := &operatorv1.Console{ObjectMeta: metav1.ObjectMeta{Name: "cluster", Generation: 17}}
+	operator := &operatorv1.Console{TypeMeta: metav1.TypeMeta{APIVersion: "operator.openshift.io/v1", Kind: "Console"}, ObjectMeta: metav1.ObjectMeta{Name: "cluster", Generation: 17}}
 	operator.Status.Conditions = values
 	operator.Status.ObservedGeneration = 16
 	return Operator{Object: operator, Status: &operator.Status.OperatorStatus}
@@ -59,15 +59,20 @@ func TestUnion(t *testing.T) {
 				t.Run(test.name, func(t *testing.T) {
 					operator := source(test.values...)
 					before := append([]operatorv1.OperatorCondition(nil), operator.Status.Conditions...)
-					selected := (OperatorConditions{typ}).Select(nil, operator)
-					out := (OperatorUnion{Condition: typ}).Reduce(metav1.Condition{}, nil, nil, selected)
-					transition := metav1.Time{}
+					d := definition()
+					d.Outputs = []c.OutputDefinition{unionOutput(typ.Type, c.Spec{Polarity: typ.Polarity})}
+					d.Now = func() time.Time { return epoch }
+					parent := ClusterOperator{&configv1.ClusterOperator{}}
+					if _, err := c.Aggregate(parent, map[string]c.Object{"operator": operator}, c.Define(d)); err != nil {
+						t.Fatal(err)
+					}
+					out, _ := c.Lookup(parent, typ.Type)
+					transition := metav1.NewTime(epoch)
 					if test.age != 0 {
 						transition = metav1.NewTime(epoch.Add(-test.age))
 					}
-					want := c.Outcome{State: c.State{Assessment: test.assessment}, Reason: test.reason, Summary: test.message, LastTransitionTime: transition}
-					if !reflect.DeepEqual(out, want) {
-						t.Fatalf("got %#v, want %#v", out, want)
+					if typ.Assessment(out) != test.assessment || out.Reason != test.reason || out.Message != test.message || out.LastTransitionTime != transition {
+						t.Fatalf("unexpected condition: %#v; want assessment=%v reason=%q message=%q transition=%v", out, test.assessment, test.reason, test.message, transition)
 					}
 					if !reflect.DeepEqual(before, operator.Status.Conditions) {
 						t.Fatal("mutated native input")
@@ -95,9 +100,17 @@ func TestInertia(t *testing.T) {
 			for i, age := range test.ages {
 				values = append(values, assertion(fmt.Sprintf("%cDegraded", 'A'+i), operatorv1.ConditionTrue, "Blocked", "detail", age))
 			}
-			selected := (OperatorConditions{degraded}).Select(nil, source(values...))
-			out := (OperatorUnion{Condition: degraded, Inertia: func(metav1.Condition) time.Duration { return time.Minute }, Now: func() time.Time { return epoch }}).Reduce(metav1.Condition{}, nil, nil, selected)
-			if out.State.Assessment != test.want || out.Reason != test.reason {
+			output := unionOutput("Degraded", c.Spec{Polarity: c.FalseIsGood})
+			output.Reduction = OperatorUnion{Condition: degraded, Inertia: func(metav1.Condition) time.Duration { return time.Minute }, Now: func() time.Time { return epoch }}
+			d := definition()
+			d.Outputs = []c.OutputDefinition{output}
+			d.Now = func() time.Time { return epoch }
+			parent := ClusterOperator{&configv1.ClusterOperator{}}
+			if _, err := c.Aggregate(parent, map[string]c.Object{"operator": source(values...)}, c.Define(d)); err != nil {
+				t.Fatal(err)
+			}
+			out, _ := c.Lookup(parent, "Degraded")
+			if degraded.Assessment(out) != test.want || out.Reason != test.reason {
 				t.Fatalf("unexpected union: %#v", out)
 			}
 		})
@@ -116,9 +129,9 @@ func TestOperatorProjectionAndRecovery(t *testing.T) {
 	cluster.Status.Conditions = []configv1.ClusterOperatorStatusCondition{{Type: "Custom", Status: configv1.ConditionTrue, Reason: "Retained"}}
 	parent := ClusterOperator{cluster}
 	children := map[string]c.Object{"Operator": operator}
-	rules := OpenShiftRules
+	rules := definition()
 	rules.Now = func() time.Time { return epoch }
-	changed, err := c.Aggregate(parent, children, rules)
+	changed, err := applyDefined(t, parent, children, rules)
 	if err != nil || !changed {
 		t.Fatalf("aggregate: %v, %v", changed, err)
 	}
@@ -141,7 +154,7 @@ func TestOperatorProjectionAndRecovery(t *testing.T) {
 	if custom, _ := c.Lookup(parent, "Custom"); custom.Reason != "Retained" {
 		t.Fatal("unowned Condition changed")
 	}
-	if changed, err = c.Aggregate(parent, children, rules); err != nil || changed {
+	if changed, err = applyDefined(t, parent, children, rules); err != nil || changed {
 		t.Fatalf("not idempotent with native generation-less schema: %v, %v", changed, err)
 	}
 
@@ -152,7 +165,7 @@ func TestOperatorProjectionAndRecovery(t *testing.T) {
 			operator.Status.Conditions[i].LastTransitionTime = metav1.NewTime(epoch)
 		}
 	}
-	if changed, err = c.Aggregate(parent, children, rules); err != nil || !changed {
+	if changed, err = applyDefined(t, parent, children, rules); err != nil || !changed {
 		t.Fatalf("recovery: %v, %v", changed, err)
 	}
 	value, _ = c.Lookup(parent, "Degraded")
@@ -161,7 +174,7 @@ func TestOperatorProjectionAndRecovery(t *testing.T) {
 	}
 	operator.Status.Conditions[2].Message = "new diagnostic only"
 	operator.Status.Conditions[2].LastTransitionTime = metav1.NewTime(epoch.Add(time.Hour))
-	if _, err = c.Aggregate(parent, children, rules); err != nil {
+	if _, err = applyDefined(t, parent, children, rules); err != nil {
 		t.Fatal(err)
 	}
 	value, _ = c.Lookup(parent, "Degraded")
@@ -187,7 +200,10 @@ func TestSetterReportsNativeChanges(t *testing.T) {
 }
 
 // componentObject deliberately resembles an operand but is not native operator status.
-type componentObject struct{ metav1.ObjectMeta }
+type componentObject struct {
+	metav1.TypeMeta
+	metav1.ObjectMeta
+}
 
 func (componentObject) GetConditions() []metav1.Condition {
 	return []metav1.Condition{{Type: "Available", Status: metav1.ConditionFalse}}
@@ -195,7 +211,7 @@ func (componentObject) GetConditions() []metav1.Condition {
 
 func TestOperandConditionsDoNotDriveOperatorStatus(t *testing.T) {
 	parent := ClusterOperator{&configv1.ClusterOperator{}}
-	_, err := c.Aggregate(parent, map[string]c.Object{"operand": &componentObject{}}, OpenShiftRules)
+	_, err := applyDefined(t, parent, map[string]c.Object{"operand": &componentObject{TypeMeta: metav1.TypeMeta{APIVersion: "apps/v1", Kind: "Deployment"}}}, definition())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,17 +223,17 @@ func TestOperandConditionsDoNotDriveOperatorStatus(t *testing.T) {
 }
 
 func Example() {
-	operator := &operatorv1.Console{ObjectMeta: metav1.ObjectMeta{Name: "cluster"}}
+	operator := &operatorv1.Console{TypeMeta: metav1.TypeMeta{APIVersion: "operator.openshift.io/v1", Kind: "Console"}, ObjectMeta: metav1.ObjectMeta{Name: "cluster"}}
 	operator.Status.Conditions = []operatorv1.OperatorCondition{
 		{Type: "ConfigDegraded", Status: operatorv1.ConditionTrue, Reason: "Invalid", Message: "invalid operator configuration"},
 		{Type: "RouteDegraded", Status: operatorv1.ConditionTrue, Reason: "UpdateDenied", Message: "route update denied"},
 	}
 	cluster := &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: "console"}}
-	_, err := c.Aggregate(ClusterOperator{cluster}, map[string]c.Object{
+	if _, err := c.Aggregate(ClusterOperator{cluster}, map[string]c.Object{
 		"Operator": Operator{Object: operator, Status: &operator.Status.OperatorStatus},
-	}, OpenShiftRules)
-	if err != nil {
-		panic(err)
+	}, Aggregation); err != nil {
+		fmt.Println(err)
+		return
 	}
 	value, _ := c.Lookup(ClusterOperator{cluster}, "Degraded")
 	fmt.Println(value.Status, value.Reason)

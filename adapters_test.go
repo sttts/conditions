@@ -27,13 +27,13 @@ func TestAggregateUsesNativeSetterResult(t *testing.T) {
 	initial := metav1.Condition{Type: "Ready", Status: metav1.ConditionTrue, Reason: "Available", Message: "ready"}
 	parent := normalizingObject{&object{conditions: []metav1.Condition{initial}}}
 	r := rule(c.Outcome{State: c.State{Assessment: c.Good}, Reason: "Available", Summary: " ready "})
-	rules := c.Rules{Outputs: []c.Aggregation{r}}
-	changed, err := c.Aggregate(parent, nil, rules)
+	rules := c.TestRules{Outputs: []c.TestRule{r}}
+	changed, err := c.EngineApplyRules(parent, nil, rules)
 	if err != nil || changed || parent.sets != 1 || parent.conditions[0] != initial {
 		t.Fatalf("did not honor the setter's normalized no-op: changed=%v err=%v parent=%#v", changed, err, parent.object)
 	}
 	rules.Outputs[0].Reduction = fixedOutcome{c.Outcome{State: c.State{Assessment: c.Good}, Reason: "Available", Summary: " updated "}}
-	changed, err = c.Aggregate(parent, nil, rules)
+	changed, err = c.EngineApplyRules(parent, nil, rules)
 	if err != nil || !changed || parent.conditions[0].Message != "updated" {
 		t.Fatalf("did not report a native change: changed=%v err=%v parent=%#v", changed, err, parent.object)
 	}
@@ -120,8 +120,8 @@ func TestAggregateWithPlainSetter(t *testing.T) {
 		conditions: []metav1.Condition{{Type: "Custom", Status: metav1.ConditionTrue, Reason: "Keep"}}}
 	tracked := c.WithChangeDetection(parent)
 	r := rule(c.Outcome{State: c.State{Assessment: c.Good}, Reason: "Available"})
-	rules := c.Rules{Outputs: []c.Aggregation{r}}
-	changed, err := c.Aggregate(tracked, nil, rules)
+	rules := c.TestRules{Outputs: []c.TestRule{r}}
+	changed, err := c.EngineApplyRules(tracked, nil, rules)
 	if err != nil || !changed {
 		t.Fatalf("aggregate through adapter: changed=%v err=%v", changed, err)
 	}
@@ -131,18 +131,18 @@ func TestAggregateWithPlainSetter(t *testing.T) {
 	if value, _ := c.Lookup(tracked, "Custom"); value.Reason != "Keep" {
 		t.Fatal("lost an unowned Condition")
 	}
-	if changed, err = c.Aggregate(tracked, nil, rules); err != nil || changed {
+	if changed, err = c.EngineApplyRules(tracked, nil, rules); err != nil || changed {
 		t.Fatalf("adapted setter is not idempotent: changed=%v err=%v", changed, err)
 	}
 	rules.Outputs = append(rules.Outputs, r)
-	if changed, err = c.Aggregate(tracked, nil, rules); err == nil || changed || parent.sets != 2 {
+	if changed, err = c.EngineApplyRules(tracked, nil, rules); err == nil || changed || parent.sets != 2 {
 		t.Fatalf("invalid rules reached the wrapped setter: changed=%v err=%v calls=%d", changed, err, parent.sets)
 	}
 }
 
 func TestWithChangeDetectionNilObjects(t *testing.T) {
 	for _, input := range []c.PlainSetter{nil, (*plainObject)(nil)} {
-		changed, err := c.Aggregate(c.WithChangeDetection(input), nil, c.Rules{})
+		changed, err := c.EngineApplyRules(c.WithChangeDetection(input), nil, c.TestRules{})
 		if err == nil || changed {
 			t.Fatalf("nil parent through adapter: changed=%v err=%v", changed, err)
 		}

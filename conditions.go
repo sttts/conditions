@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package conditions aggregates supplied Kubernetes Conditions with flat, caller-defined rules.
+// Package conditions aggregates supplied Kubernetes Conditions using reusable schemas and Go definitions.
 package conditions
 
 import (
@@ -71,23 +71,22 @@ type Conditioned interface {
 	Setter
 }
 
-// Derivation derives additional local Conditions from already-computed Conditions and metadata.
+// Derivation derives owned Conditions after its aggregation produces an output.
+// Outputs declares exclusive ownership and the published Spec of each output,
+// including when Derive returns no value.
+// Define snapshots this contract. Implementations must be pure and return only
+// conditions declared by that snapshot.
 type Derivation interface {
+	Outputs() map[string]Spec
 	Derive(parent Object, now time.Time) []metav1.Condition
 }
 
-// LocalEvaluator aggregates supplied local Conditions that have no configured output rule.
-type LocalEvaluator interface {
-	Evaluate(parent Object, local metav1.Condition, now time.Time) (*metav1.Condition, error)
-}
-
-// Rules is flat configuration for one resource boundary, in the caller's declared output order.
-type Rules struct {
-	Outputs       []Aggregation
-	LocalFirst    bool
-	UnmappedLocal LocalEvaluator
-	IgnoreLocal   []string
-	Now           func() time.Time
+// evaluationPlan selects independently supplied aggregations for one resource boundary.
+// Output order is not evaluation order; Requires declares current-call dependencies.
+// Unowned local Conditions are copied unchanged apart from transition timestamps.
+type evaluationPlan struct {
+	Outputs []compiledRule
+	Now     func() time.Time
 }
 
 // Lookup distinguishes a missing Condition from an explicitly unknown Condition.
@@ -111,7 +110,7 @@ func (c ConditionType) Read(s Object) metav1.Condition { value, _ := Lookup(s, c
 
 // Assessment normalizes a raw status without guessing escalation from its boolean.
 func (c ConditionType) Assessment(value metav1.Condition) Assessment {
-	if value.Status == metav1.ConditionUnknown {
+	if value.Status != metav1.ConditionTrue && value.Status != metav1.ConditionFalse {
 		return Unknown
 	}
 	good := value.Status == metav1.ConditionTrue
@@ -195,8 +194,11 @@ const (
 	NoObservedGeneration
 )
 
-// Aggregation is a flat value composing implementations of Conditions concepts.
-type Aggregation struct {
+// compiledRule is a flat value composing implementations of Conditions concepts.
+type compiledRule struct {
+	// Requires names selected outputs whose current-call results are visible to this rule.
+	// Other rules' new results are isolated; previous persisted Conditions remain readable.
+	Requires    []string
 	DefaultBase *metav1.Condition
 	Derived     []Derivation
 	Output      ConditionType
@@ -204,16 +206,16 @@ type Aggregation struct {
 	Local       LocalSelector
 	Children    ChildSelector
 	Reduction   Reducer
-	Messages    Formatter
+	Formatter   Formatter
 	Generation  GenerationPolicy
 }
 
-// Evaluate derives one desired Condition without modifying the supplied objects.
-func (a Aggregation) Evaluate(parent Object, children map[string]Object, base metav1.Condition, now time.Time) (*metav1.Condition, error) {
-	if isNilObject(parent) {
+// evaluate derives one desired Condition without modifying the supplied objects.
+func (a compiledRule) evaluate(parent Object, children map[string]Object, base metav1.Condition, now time.Time) (*metav1.Condition, error) {
+	if isNil(parent) {
 		return nil, fmt.Errorf("parent is nil")
 	}
-	if a.Output.Type == "" || a.Parent == nil || a.Reduction == nil || a.Messages == nil {
+	if a.Output.Type == "" || isNil(a.Parent) || isNil(a.Reduction) || isNil(a.Formatter) {
 		return nil, fmt.Errorf("incomplete aggregation for %q", a.Output.Type)
 	}
 	outcome, done := a.Parent.Before(parent, children, base)
@@ -266,105 +268,10 @@ func (a Aggregation) Evaluate(parent Object, children map[string]Object, base me
 		transition = old.LastTransitionTime
 	}
 	return &metav1.Condition{Type: a.Output.Type, Status: status, Reason: outcome.Reason,
-		Message: a.Messages.Format(outcome.Summary, outcome.Causes), ObservedGeneration: generation,
+		Message: a.Formatter.Format(outcome.Summary, outcome.Causes), ObservedGeneration: generation,
 		LastTransitionTime: transition}, nil
 }
 
-// Aggregate applies the configured rules to existing objects and reports in-memory changes.
-func Aggregate(parent Conditioned, children map[string]Object, rules Rules, local ...metav1.Condition) (bool, error) {
-	desired, err := Evaluate(parent, children, rules, local...)
-	if err != nil {
-		return false, err
-	}
-	return parent.SetConditions(desired), nil
-}
-
-// Evaluate computes all desired Conditions through the same generic resource-oriented call.
-func Evaluate(parent Object, children map[string]Object, rules Rules, local ...metav1.Condition) ([]metav1.Condition, error) {
-	if isNilObject(parent) {
-		return nil, fmt.Errorf("parent is nil")
-	}
-	outputs := make(map[string]Aggregation, len(rules.Outputs))
-	for _, rule := range rules.Outputs {
-		if rule.Output.Type == "" || rule.Parent == nil || rule.Reduction == nil || rule.Messages == nil {
-			return nil, fmt.Errorf("incomplete aggregation for %q", rule.Output.Type)
-		}
-		if _, exists := outputs[rule.Output.Type]; exists {
-			return nil, fmt.Errorf("duplicate output %q", rule.Output.Type)
-		}
-		if rule.DefaultBase != nil && rule.DefaultBase.Type != rule.Output.Type {
-			return nil, fmt.Errorf("default base %q does not match output %q", rule.DefaultBase.Type, rule.Output.Type)
-		}
-		outputs[rule.Output.Type] = rule
-	}
-	ignored := make(map[string]bool, len(rules.IgnoreLocal))
-	for _, typ := range rules.IgnoreLocal {
-		ignored[typ] = true
-	}
-	nowFunc := rules.Now
-	if nowFunc == nil {
-		nowFunc = time.Now
-	}
-	now := nowFunc()
-	working := &conditionOverlay{Object: parent, conditions: append([]metav1.Condition(nil), parent.GetConditions()...)}
-	apply := func(rule Aggregation, base metav1.Condition) error {
-		condition, err := rule.Evaluate(working, children, base, now)
-		if err != nil {
-			return err
-		}
-		if condition != nil {
-			working.SetConditions(*condition)
-			for _, derivation := range rule.Derived {
-				working.SetConditions(derivation.Derive(working, now)...)
-			}
-		}
-		return nil
-	}
-	provided := map[string]bool{}
-	pending := map[string]metav1.Condition{}
-	for _, condition := range local {
-		if ignored[condition.Type] {
-			continue
-		}
-		provided[condition.Type] = true
-		if rule, exists := outputs[condition.Type]; exists {
-			if rules.LocalFirst && !rule.Parent.IncludeChildren(condition) {
-				delete(pending, condition.Type)
-				if err := apply(rule, condition); err != nil {
-					return nil, err
-				}
-			} else {
-				pending[condition.Type] = condition
-			}
-			continue
-		}
-		if rules.UnmappedLocal == nil {
-			working.SetConditions(stamp(working, condition, now))
-			continue
-		}
-		result, err := rules.UnmappedLocal.Evaluate(working, condition, now)
-		if err != nil {
-			return nil, err
-		}
-		if result != nil {
-			working.SetConditions(*result)
-		}
-	}
-	for _, rule := range rules.Outputs {
-		if base, exists := pending[rule.Output.Type]; exists {
-			if err := apply(rule, base); err != nil {
-				return nil, err
-			}
-		} else if !provided[rule.Output.Type] && rule.DefaultBase != nil {
-			if err := apply(rule, *rule.DefaultBase); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return working.GetConditions(), nil
-}
-
-// ReasonSuffix assigns escalation to a matching reason suffix.
 type ReasonSuffix struct {
 	Suffix     string
 	Escalation Escalation
@@ -497,7 +404,7 @@ type namedObject struct {
 func sortedChildren(children map[string]Object) []namedObject {
 	result := make([]namedObject, 0, len(children))
 	for name, object := range children {
-		if !isNilObject(object) {
+		if !isNil(object) {
 			result = append(result, namedObject{name, object})
 		}
 	}
@@ -548,8 +455,8 @@ func isDeleting(object Object) bool {
 	return timestamp != nil && !timestamp.IsZero()
 }
 
-// isNilObject handles optional resources, including typed nil pointers in interface values.
-func isNilObject(object Object) bool {
+// isNil handles typed nil objects and policy implementations held in interfaces.
+func isNil(object any) bool {
 	if object == nil {
 		return true
 	}

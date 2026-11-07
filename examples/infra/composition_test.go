@@ -1,0 +1,51 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+package infra
+
+import (
+	"reflect"
+	"slices"
+	"testing"
+
+	c "github.com/sttts/conditions"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+func TestExplicitLocalChecks(t *testing.T) {
+	parent := referenceParent(t, metav1.Condition{Type: "CustomHealth", Status: metav1.ConditionFalse, Reason: "HealthFailed", Message: "broken"})
+	aggregation := c.Define(c.Definition{Outputs: []c.OutputDefinition{LocalChecks("Custom")}})
+	if _, err := c.Aggregate(parent, nil, aggregation, metav1.Condition{Type: "Custom", Status: metav1.ConditionTrue, Reason: "Passed"}); err != nil {
+		t.Fatal(err)
+	}
+	value, _ := c.Lookup(parent, "Custom")
+	if value.Status != metav1.ConditionFalse || value.Reason != "HealthFailed" {
+		t.Fatalf("lost local prefix semantics: %#v", value)
+	}
+}
+
+func TestInfraCompositionIsOrderIndependent(t *testing.T) {
+	fixtures, _ := loadFixtures(t)
+	for _, f := range fixtures {
+		t.Run(f.Name, func(t *testing.T) {
+			a, children := fixtureObjects(f)
+			b, _ := fixtureObjects(f)
+			rules := definition()
+			rules.Now = fixtureNow
+			reversed := rules
+			reversed.Outputs = slices.Clone(rules.Outputs)
+			slices.Reverse(reversed.Outputs)
+			local := slices.Clone(f.Bases)
+			slices.Reverse(local)
+			if _, err := applyDefined(t, a, children, rules, f.Bases...); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := applyDefined(t, b, children, reversed, local...); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(a.GetConditions(), b.GetConditions()) {
+				t.Fatalf("rule/local permutation changed result: a=%#v b=%#v", a.GetConditions(), b.GetConditions())
+			}
+		})
+	}
+}

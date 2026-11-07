@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/crossplane/crossplane-runtime/v2 v2.0.0
 	github.com/sttts/conditions v0.0.0
+	github.com/sttts/conditions/examples/infra v0.0.0
 	k8s.io/api v0.33.0
 	k8s.io/apimachinery v0.34.2
 )
@@ -31,3 +32,5 @@ require (
 )
 
 replace github.com/sttts/conditions => ../..
+
+replace github.com/sttts/conditions/examples/infra => ../infra

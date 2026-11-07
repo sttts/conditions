@@ -5,11 +5,18 @@
 ```go
 type Formatter interface {
     Format(summary string, causes []Cause) string
+}
+```
+
+Short presentation is optional and separate:
+
+```go
+type InlineFormatter interface {
     Inline(condition metav1.Condition) string
 }
 ```
 
-The reducer supplies a summary and named causes. The selected formatter produces the Condition message; `Inline` produces a separate concise presentation, using the Condition reason when its message is empty. An aggregation selects a formatter through `Aggregation.Messages`. Applications may implement additional formats through the same interface.
+The reducer supplies a summary and named causes. The selected formatter produces the Condition message; `Inline` produces a separate concise presentation, using the Condition reason when its message is empty. An aggregation selects a formatter through `OutputDefinition.Formatter` or `Output(name, spec).Format(formatter)`. Applications may implement additional formats through the one-method `Formatter` interface. `InlineFormatter` is a separate optional presentation interface.
 
 ## MultilineMessages
 

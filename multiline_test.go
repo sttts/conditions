@@ -15,7 +15,7 @@ import (
 )
 
 func ExampleMultilineMessages() {
-	var format c.Formatter = c.MultilineMessages{MaxLines: 7}
+	format := c.MultilineMessages{MaxLines: 7}
 	child := format.Format("bootstrap failed", []c.Cause{{Reference: "Job/init", Message: "image pull failed"}})
 	message := format.Format("service unavailable", []c.Cause{{Reference: "Worker", Message: child}})
 	fmt.Println(message)

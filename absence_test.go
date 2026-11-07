@@ -59,7 +59,9 @@ func TestAllAndLocalAbsence(t *testing.T) {
 				if tc.local != "" {
 					local = []metav1.Condition{{Type: "Ready", Status: tc.local, Reason: "LocalAssertion", ObservedGeneration: 3}}
 				}
-				c.AggregateSlice(parent, children, a, local...)
+				if _, err := c.AggregateSlice(parent, children, a, local...); err != nil {
+					t.Fatal(err)
+				}
 				value, found := c.Lookup(parent, "Ready")
 				if tc.want == "" {
 					if found {
@@ -79,7 +81,7 @@ func TestAllAndLocalAbsence(t *testing.T) {
 						t.Fatalf("lost assertion generation: %#v", value)
 					}
 				}
-				if c.AggregateSlice(parent, children, a, local...) {
+				if changed, err := c.AggregateSlice(parent, children, a, local...); err != nil || changed {
 					t.Fatal("repeat changed output")
 				}
 			})

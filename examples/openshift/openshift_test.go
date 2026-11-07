@@ -63,7 +63,9 @@ func TestUnion(t *testing.T) {
 					d.Outputs = []c.OutputDefinition{unionOutput(typ.Type, c.Spec{Polarity: typ.Polarity})}
 					d.Now = func() time.Time { return epoch }
 					parent := ClusterOperator{&configv1.ClusterOperator{}}
-					c.Aggregate(parent, map[string]c.Object{"operator": operator}, c.Define(d))
+					if _, err := c.Aggregate(parent, map[string]c.Object{"operator": operator}, c.Define(d)); err != nil {
+						t.Fatal(err)
+					}
 					out, _ := c.Lookup(parent, typ.Type)
 					transition := metav1.NewTime(epoch)
 					if test.age != 0 {
@@ -104,7 +106,9 @@ func TestInertia(t *testing.T) {
 			d.Outputs = []c.OutputDefinition{output}
 			d.Now = func() time.Time { return epoch }
 			parent := ClusterOperator{&configv1.ClusterOperator{}}
-			c.Aggregate(parent, map[string]c.Object{"operator": source(values...)}, c.Define(d))
+			if _, err := c.Aggregate(parent, map[string]c.Object{"operator": source(values...)}, c.Define(d)); err != nil {
+				t.Fatal(err)
+			}
 			out, _ := c.Lookup(parent, "Degraded")
 			if degraded.Assessment(out) != test.want || out.Reason != test.reason {
 				t.Fatalf("unexpected union: %#v", out)
@@ -225,9 +229,12 @@ func Example() {
 		{Type: "RouteDegraded", Status: operatorv1.ConditionTrue, Reason: "UpdateDenied", Message: "route update denied"},
 	}
 	cluster := &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: "console"}}
-	c.Aggregate(ClusterOperator{cluster}, map[string]c.Object{
+	if _, err := c.Aggregate(ClusterOperator{cluster}, map[string]c.Object{
 		"Operator": Operator{Object: operator, Status: &operator.Status.OperatorStatus},
-	}, Aggregation)
+	}, Aggregation); err != nil {
+		fmt.Println(err)
+		return
+	}
 	value, _ := c.Lookup(ClusterOperator{cluster}, "Degraded")
 	fmt.Println(value.Status, value.Reason)
 	fmt.Println(value.Message)

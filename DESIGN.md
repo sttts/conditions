@@ -11,7 +11,7 @@ in this document. [FORMATS.md](FORMATS.md) specifies the existing message contra
 
 ## Schema-oriented public API
 
-The controller boundary is now `Aggregate(parent, children, aggregation, local...) bool`,
+The controller boundary is now `Aggregate(parent, children, aggregation, local...) (bool, error)`,
 with `AggregateSlice` for `[]Object`. `Define` builds an immutable aggregation during startup
 and `Aggregation.Schema()` publishes its output interpretation. The README contains the
 complete user-facing API and executable examples.
@@ -45,11 +45,11 @@ adapters, or reusable interface implementations. Output-level `Children` owns co
 selection over the admitted child objects; mapping-level `Select` specializes one binding.
 These callbacks are native extension points, not actions in a DSL interpreter.
 
-Configuration errors panic during `Define`. The bool-only application call also panics on
-caller-contract errors, such as duplicate local assertions, before mutation. Observational
-absence/Unknown is represented in conditions. `EvaluateAggregation` exposes pure evaluation
-with returned runtime errors. This choice is explicit: a false change flag never hides an
-error. Custom policy implementations are required to be pure and concurrency-safe.
+Configuration errors panic during `Define`, including ambiguous routing of registered Go
+types. Scheme registrations are snapshotted at construction. Caller-contract and concrete
+object identity errors return `false, err` from `Aggregate` before mutation. Absence/Unknown
+is represented in conditions. `Evaluate` and `EvaluateAggregation` provide pure evaluation
+with returned runtime errors. Custom policies must be pure and concurrency-safe.
 
 ## One definition and one evaluation path
 
@@ -146,9 +146,9 @@ produced types are appended in canonical order. Existing unrelated conditions ar
 Unchanged status preserves LastTransitionTime even when diagnostics change. Generation policy
 selects parent generation, preserved base generation or no observed generation.
 
-Definitions snapshot owned maps and slices. Custom implementations and the optional Scheme
-must be immutable during use. Caller-contract and resolution errors precede the final setter.
-Aggregate's bool-only signature panics on those errors; EvaluateAggregation returns errors.
+Definitions snapshot owned maps, slices, and scheme registrations. Custom implementations
+must be immutable during use. Caller-contract and resolution errors precede the final setter
+and are returned by Aggregate, Evaluate, and EvaluateAggregation.
 Unknown and missing conditions remain ordinary observations, not evaluation errors.
 
 Core tests exercise both public definitions and the internal evaluator. Example tests check

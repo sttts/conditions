@@ -60,7 +60,7 @@ The example pins `openshift/api` at the release-4.19-compatible revision in [go.
 `operator` is an existing `*operatorv1.Console`; `cluster` is an existing `*configv1.ClusterOperator`. The explicit adapter reads its native `OperatorStatus`:
 
 ```go
-changed := c.Aggregate(
+changed, err := c.Aggregate(
     openshift.ClusterOperator{ClusterOperator: cluster},
     map[string]c.Object{
         "Operator": openshift.Operator{

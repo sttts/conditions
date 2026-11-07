@@ -8,6 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"reflect"
 	"strconv"
 	"time"
 )
@@ -16,8 +17,8 @@ import (
 // loops, functions and struct literals can be freely mixed with them.
 // Empty Resources publishes a global schema.
 type Definition struct {
-	// Scheme resolves typed children with empty TypeMeta. Register types before Define;
-	// do not mutate the scheme while aggregations use it. Explicit object GVK wins.
+	// Scheme registrations are snapshotted and validated by Define. Register types
+	// before construction. Explicit object GVK wins.
 	Scheme    *runtime.Scheme
 	Resources []ResourceMatch
 	Outputs   []OutputDefinition
@@ -85,7 +86,7 @@ func (o OutputDefinition) Format(formatter Formatter) OutputDefinition {
 // Aggregation is a compiled definition and its published output contract.
 // Construct it once, usually in a package variable, and share it across reconciles.
 type Aggregation struct {
-	scheme   *runtime.Scheme
+	types    map[reflect.Type]*compiledChild
 	schema   Schema
 	rules    evaluationPlan
 	children []compiledChild
@@ -136,7 +137,7 @@ func Define(d Definition) *Aggregation {
 	}
 	s = cloneSchema(s)
 	validateSchema(s)
-	a := &Aggregation{scheme: d.Scheme, schema: s, rules: evaluationPlan{Now: d.Now}}
+	a := &Aggregation{schema: s, rules: evaluationPlan{Now: d.Now}}
 	for _, binding := range d.Children {
 		a.children = append(a.children, compileChild(binding, s))
 	}
@@ -199,6 +200,7 @@ func Define(d Definition) *Aggregation {
 	if _, _, err := plan(a.rules); err != nil {
 		panic("conditions: " + err.Error())
 	}
+	a.compileTypes(d.Scheme)
 	return a
 }
 
@@ -229,19 +231,17 @@ func (a *Aggregation) child(object Object) (*compiledChild, error) {
 	if !ok {
 		return nil, fmt.Errorf("missing API identity for %T; supply WithGVK", object)
 	}
-	kinds, err := resolveKinds(typed, a.scheme)
-	if err != nil {
-		return nil, err
-	}
-	// Several registered GVKs are harmless only if all select the same binding.
-	// Never choose a preferred version or silently drop an unresolved child.
-	result := a.childKind(kinds[0])
-	for _, kind := range kinds[1:] {
-		if a.childKind(kind) != result {
-			return nil, fmt.Errorf("ambiguous child identity for %T: %v", object, kinds)
+	if kind := typed.GetObjectKind().GroupVersionKind(); !kind.Empty() {
+		if kind.Version == "" || kind.Kind == "" {
+			return nil, fmt.Errorf("incomplete GVK for %T: %v", object, kind)
 		}
+		return a.childKind(kind), nil
 	}
-	return result, nil
+	binding, registered := a.types[reflect.TypeOf(object)]
+	if !registered {
+		return nil, fmt.Errorf("missing GVK for %T; register its type before Define or supply TypeMeta or WithGVK", object)
+	}
+	return binding, nil
 }
 
 func (a *Aggregation) childKind(gvk schema.GroupVersionKind) *compiledChild {
@@ -327,18 +327,18 @@ func (a *Aggregation) selectChildren(children map[string]Object) (map[string]Obj
 }
 
 // Aggregate applies the desired slice exactly once and returns the native setter's change flag.
-// It panics on invalid caller input before calling the setter. It performs no API writes.
-func Aggregate(parent Conditioned, children map[string]Object, a *Aggregation, local ...metav1.Condition) bool {
+// On error it returns false without calling the setter. It performs no API writes.
+func Aggregate(parent Conditioned, children map[string]Object, a *Aggregation, local ...metav1.Condition) (bool, error) {
 	desired, err := EvaluateAggregation(parent, children, a, local...)
 	if err != nil {
-		panic("conditions: " + err.Error())
+		return false, err
 	}
-	return parent.SetConditions(desired)
+	return parent.SetConditions(desired), nil
 }
 
 // AggregateSlice is Aggregate with stable positional diagnostic names ("0", "1", ...).
 // Nil children are skipped without renumbering. Use Aggregate for caller-defined names.
-func AggregateSlice(parent Conditioned, children []Object, a *Aggregation, local ...metav1.Condition) bool {
+func AggregateSlice(parent Conditioned, children []Object, a *Aggregation, local ...metav1.Condition) (bool, error) {
 	named := make(map[string]Object, len(children))
 	for i, child := range children {
 		named[strconv.Itoa(i)] = child

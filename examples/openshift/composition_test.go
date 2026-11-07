@@ -16,7 +16,9 @@ func TestSelectOneUnion(t *testing.T) {
 		Children: []c.ChildBinding{c.Child(OperatorSchema, c.Identity)},
 	})
 	parent := ClusterOperator{&configv1.ClusterOperator{}}
-	c.Aggregate(parent, nil, aggregation)
+	if _, err := c.Aggregate(parent, nil, aggregation); err != nil {
+		t.Fatal(err)
+	}
 	if len(parent.GetConditions()) != 1 {
 		t.Fatal("selecting one union enabled other axes")
 	}

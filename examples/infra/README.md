@@ -18,7 +18,7 @@ aggregation := c.Define(c.Definition{
     },
     Children: []c.ChildBinding{c.Child(infra.InputSchema, c.Identity)},
 })
-changed := c.Aggregate(parent, children, aggregation, localConditions...)
+changed, err := c.Aggregate(parent, children, aggregation, localConditions...)
 ```
 
 Outputs can be selected individually or combined with another provider's values. Required

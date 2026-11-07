@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"reflect"
 )
 
 // ObjectTypes constructs resource scopes from API objects. Scheme may be nil when
@@ -72,4 +73,35 @@ func resolveKinds(object interface{ GetObjectKind() schema.ObjectKind }, scheme 
 		}
 	}
 	return kinds, nil
+}
+
+// compileTypes freezes scheme registrations and checks routing ambiguity before
+// any reconcile. Only condition-bearing types participate in child routing.
+func (a *Aggregation) compileTypes(s *runtime.Scheme) {
+	if s == nil {
+		return
+	}
+	a.types = map[reflect.Type]*compiledChild{}
+	kindsByType := map[reflect.Type][]schema.GroupVersionKind{}
+	for kind, typ := range s.AllKnownTypes() {
+		if _, ok := reflect.New(typ).Interface().(Object); !ok {
+			continue
+		}
+		ptr := reflect.PointerTo(typ)
+		kindsByType[ptr] = append(kindsByType[ptr], kind)
+	}
+	for typ, kinds := range kindsByType {
+		var selected *compiledChild
+		for i, kind := range kinds {
+			if kind.Version == "" || kind.Kind == "" {
+				panic(fmt.Sprintf("conditions: incomplete registered GVK for %v: %v", typ, kind))
+			}
+			binding := a.childKind(kind)
+			if i > 0 && binding != selected {
+				panic(fmt.Sprintf("conditions: ambiguous child identity for %v: %v", typ, kinds))
+			}
+			selected = binding
+		}
+		a.types[typ] = selected
+	}
 }

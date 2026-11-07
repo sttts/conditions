@@ -40,8 +40,12 @@ func TestHelpersAndPlainGoHaveSameBehavior(t *testing.T) {
 	for _, child := range []*object{observation("Available", metav1.ConditionTrue, "Broken"), observation("Available", metav1.ConditionFalse, "Fine"), {}} {
 		p, q := &object{}, &object{}
 		children := []c.Object{scopeObject("db.io", "v1", "DB", child)}
-		c.AggregateSlice(p, children, helpers)
-		c.AggregateSlice(q, children, plain)
+		if _, err := c.AggregateSlice(p, children, helpers); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.AggregateSlice(q, children, plain); err != nil {
+			t.Fatal(err)
+		}
 		if !reflect.DeepEqual(p.conditions, q.conditions) {
 			t.Fatalf("helpers and literals differ: %#v / %#v", p.conditions, q.conditions)
 		}
@@ -79,7 +83,9 @@ func TestGoCallbacksAndPublishedReasons(t *testing.T) {
 	})
 	parent := &object{}
 	child := observation("Available", metav1.ConditionFalse, "NoCapacity")
-	c.AggregateSlice(parent, []c.Object{scopeObject("ignored.io", "v1", "DB", child), scopeObject("db.io", "v1", "DB", child)}, a)
+	if _, err := c.AggregateSlice(parent, []c.Object{scopeObject("ignored.io", "v1", "DB", child), scopeObject("db.io", "v1", "DB", child)}, a); err != nil {
+		t.Fatal(err)
+	}
 	if calls != 1 {
 		t.Fatalf("custom selector escaped binding scope: %d calls", calls)
 	}
@@ -88,7 +94,9 @@ func TestGoCallbacksAndPublishedReasons(t *testing.T) {
 		Children: []c.ChildBinding{c.Child(a.Schema(), c.Classify(c.Map("Healthy", "Ready")))},
 	})
 	root := &object{}
-	c.AggregateSlice(root, []c.Object{parent}, top)
+	if _, err := c.AggregateSlice(root, []c.Object{parent}, top); err != nil {
+		t.Fatal(err)
+	}
 	if v, _ := c.Lookup(root, "Ready"); v.Reason != "ConditionsFailed" {
 		t.Fatalf("lost callback's published reason semantics: %#v", v)
 	}
@@ -111,7 +119,9 @@ func TestDefinitionSnapshotsReasonMapsAndMappings(t *testing.T) {
 	}
 	for _, tc := range []struct{ reason, want string }{{"Broken", "ConditionsFailed"}, {"Manual", "ConditionsWaitingForHuman"}} {
 		p := &object{}
-		c.AggregateSlice(p, []c.Object{observation("Available", metav1.ConditionFalse, tc.reason)}, a)
+		if _, err := c.AggregateSlice(p, []c.Object{observation("Available", metav1.ConditionFalse, tc.reason)}, a); err != nil {
+			t.Fatal(err)
+		}
 		if v, _ := c.Lookup(p, "Ready"); v.Reason != tc.want {
 			t.Fatal(v)
 		}
@@ -153,9 +163,13 @@ func TestFormatterDoesNotRequireInlineOrChangeSemantics(t *testing.T) {
 	}
 	custom, standard := &object{}, &object{}
 	children := map[string]c.Object{"database": observation("Ready", metav1.ConditionFalse, "Starting")}
-	c.Aggregate(custom, children, c.Define(d))
+	if _, err := c.Aggregate(custom, children, c.Define(d)); err != nil {
+		t.Fatal(err)
+	}
 	d.Outputs[0].Formatter = c.BoundedMessages{}
-	c.Aggregate(standard, children, c.Define(d))
+	if _, err := c.Aggregate(standard, children, c.Define(d)); err != nil {
+		t.Fatal(err)
+	}
 	got, _ := c.Lookup(custom, "Ready")
 	want, _ := c.Lookup(standard, "Ready")
 	if calls != 1 || got.Message != "Conditions are not satisfied / Starting" {
@@ -216,20 +230,26 @@ func TestDerivedContractPublicationAndSnapshot(t *testing.T) {
 		t.Fatal("caller mutated output ownership")
 	}
 	parent := &object{}
-	c.Aggregate(parent, nil, producer)
+	if _, err := c.Aggregate(parent, nil, producer); err != nil {
+		t.Fatal(err)
+	}
 	consumer := c.Define(c.Definition{
 		Outputs:  []c.OutputDefinition{c.All("Healthy", c.Spec{})},
 		Children: []c.ChildBinding{c.Child(published, c.Classify(c.Map("Initialized", "Healthy")))},
 	})
 	root := &object{}
-	c.AggregateSlice(root, []c.Object{parent}, consumer)
+	if _, err := c.AggregateSlice(root, []c.Object{parent}, consumer); err != nil {
+		t.Fatal(err)
+	}
 	if value, _ := c.Lookup(root, "Healthy"); value.Status != metav1.ConditionFalse || value.Reason != "ConditionsFailed" {
 		t.Fatal(value)
 	}
 	before := append([]metav1.Condition(nil), parent.conditions...)
 	sets := parent.sets
 	derivation.values[0].Type = "Injected"
-	assertPanic(t, "undeclared", func() { c.Aggregate(parent, nil, producer) })
+	if changed, err := c.Aggregate(parent, nil, producer); err == nil || changed {
+		t.Fatalf("changed=%v, err=%v", changed, err)
+	}
 	if parent.sets != sets || !reflect.DeepEqual(before, parent.conditions) {
 		t.Fatal("undeclared derived output caused partial mutation")
 	}

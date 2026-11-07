@@ -15,7 +15,9 @@ import (
 func TestExplicitLocalChecks(t *testing.T) {
 	parent := referenceParent(t, metav1.Condition{Type: "CustomHealth", Status: metav1.ConditionFalse, Reason: "HealthFailed", Message: "broken"})
 	aggregation := c.Define(c.Definition{Outputs: []c.OutputDefinition{LocalChecks("Custom")}})
-	c.Aggregate(parent, nil, aggregation, metav1.Condition{Type: "Custom", Status: metav1.ConditionTrue, Reason: "Passed"})
+	if _, err := c.Aggregate(parent, nil, aggregation, metav1.Condition{Type: "Custom", Status: metav1.ConditionTrue, Reason: "Passed"}); err != nil {
+		t.Fatal(err)
+	}
 	value, _ := c.Lookup(parent, "Custom")
 	if value.Status != metav1.ConditionFalse || value.Reason != "HealthFailed" {
 		t.Fatalf("lost local prefix semantics: %#v", value)

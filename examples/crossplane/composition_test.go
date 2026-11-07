@@ -12,7 +12,9 @@ import (
 func TestSelectReadinessOutput(t *testing.T) {
 	aggregation := c.Define(c.Definition{Outputs: []c.OutputDefinition{ReadyOutput}, Children: []c.ChildBinding{c.Child(NativeSchema, c.Identity)}})
 	parent := resource()
-	c.Aggregate(parent, nil, aggregation)
+	if _, err := c.Aggregate(parent, nil, aggregation); err != nil {
+		t.Fatal(err)
+	}
 	value, _ := c.Lookup(parent, "Ready")
 	if value.Status != metav1.ConditionTrue {
 		t.Fatalf("unexpected readiness: %#v", value)

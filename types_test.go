@@ -108,7 +108,9 @@ func TestTypedChildrenAndResolutionAtomicity(t *testing.T) {
 	child := &apiObject{object: *observation("Available", metav1.ConditionTrue, "Serving")}
 	parent := &object{}
 	a := c.Define(d)
-	c.AggregateSlice(parent, []c.Object{child}, a)
+	if _, err := c.AggregateSlice(parent, []c.Object{child}, a); err != nil {
+		t.Fatal(err)
+	}
 	if value, _ := c.Lookup(parent, "Ready"); value.Status != metav1.ConditionTrue {
 		t.Fatal(value)
 	}
@@ -117,21 +119,16 @@ func TestTypedChildrenAndResolutionAtomicity(t *testing.T) {
 	}
 	// Narrowing to one registered version leaves the other unmatched: ambiguous.
 	d.Children[0] = d.Children[0].For(c.GVK("db.io", "v1", "Database"))
-	ambiguous := c.Define(d)
-	before := parent.sets
-	_, err := c.EvaluateAggregation(parent, map[string]c.Object{"db": child}, ambiguous)
-	if err == nil || !strings.Contains(err.Error(), "ambiguous child identity") {
+	assertPanic(t, "ambiguous child identity", func() { c.Define(d) })
+	// Explicit identity works without scheme-based inference.
+	d.Scheme = nil
+	explicit := c.Define(d)
+	if _, err := c.AggregateSlice(parent, []c.Object{c.WithGVK(child, v1)}, explicit); err != nil {
 		t.Fatal(err)
 	}
-	assertPanic(t, "ambiguous child identity", func() { c.AggregateSlice(parent, []c.Object{child}, ambiguous) })
-	if parent.sets != before {
-		t.Fatal("mutation on identity failure")
-	}
-	// Explicit identity disambiguates, including adapters that are not runtime.Objects.
-	c.AggregateSlice(parent, []c.Object{c.WithGVK(child, v1)}, ambiguous)
 	d.Scheme = nil
 	missing := c.Define(d)
-	_, err = c.EvaluateAggregation(parent, map[string]c.Object{"db": child}, missing)
+	_, err := c.EvaluateAggregation(parent, map[string]c.Object{"db": child}, missing)
 	if err == nil || !strings.Contains(err.Error(), "missing GVK") {
 		t.Fatal(err)
 	}
@@ -169,8 +166,29 @@ func ExampleTypes() {
 	})
 	child := &apiObject{object: *observation("Available", metav1.ConditionTrue, "Serving")}
 	parent := &object{}
-	c.AggregateSlice(parent, []c.Object{child}, aggregation)
+	if _, err := c.AggregateSlice(parent, []c.Object{child}, aggregation); err != nil {
+		fmt.Println(err)
+		return
+	}
 	ready, _ := c.Lookup(parent, "Ready")
 	fmt.Println(ready.Status, child.GroupVersionKind().Empty())
 	// Output: True true
+}
+
+func TestSchemeSnapshotAndConstructionErrors(t *testing.T) {
+	v1 := schema.GroupVersionKind{Group: "db.io", Version: "v1", Kind: "Database"}
+	s := registeredTypes(v1)
+	d := c.Definition{Scheme: s, Outputs: []c.OutputDefinition{c.All("Ready", c.Spec{})}, Children: []c.ChildBinding{c.Child(contract("Ready", c.TrueIsGood), c.Identity).For(c.GVK("db.io", "v1", "Database"))}}
+	a := c.Define(d)
+	// Later registrations cannot change the routing of an existing aggregation.
+	s.AddKnownTypeWithName(v1.GroupKind().WithVersion("v2"), &apiObject{})
+	child := &apiObject{object: *observation("Ready", metav1.ConditionTrue, "Serving")}
+	if _, err := c.AggregateSlice(&object{}, []c.Object{child}, a); err != nil {
+		t.Fatal(err)
+	}
+	assertPanic(t, "ambiguous child identity", func() { c.Define(d) })
+	// A single Go type can still have multiple versions if all select one binding.
+	d.Scheme = s
+	d.Children[0] = c.Child(contract("Ready", c.TrueIsGood), c.Identity).For(c.GK("db.io", "Database"))
+	c.Define(d)
 }

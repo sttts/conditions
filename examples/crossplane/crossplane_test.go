@@ -195,8 +195,11 @@ func TestReservedHealthyIsNotAnInput(t *testing.T) {
 func Example() {
 	parent := resource()
 	child := resource(xpv1.Creating().WithMessage("waiting for database"))
-	c.Aggregate(parent, map[string]c.Object{"database": child}, Aggregation,
-		ToCondition(xpv1.ReconcileSuccess()))
+	if _, err := c.Aggregate(parent, map[string]c.Object{"database": child}, Aggregation,
+		ToCondition(xpv1.ReconcileSuccess())); err != nil {
+		fmt.Println(err)
+		return
+	}
 	for _, typ := range []string{"Ready", "Synced"} {
 		value, _ := c.Lookup(parent, typ)
 		fmt.Println(value.Type, value.Status, value.Reason)

@@ -41,12 +41,21 @@ func ExampleAggregate() {
 	database := &exampleResource{Conditions: []metav1.Condition{{Type: "Available", Status: metav1.ConditionFalse, Reason: "Provisioning", Message: "waiting for endpoint"}}}
 	children := map[string]c.Object{"database": c.WithGVK(database, schema.GroupVersionKind{Group: "database.example.io", Version: "v1", Kind: "Database"})}
 	local := metav1.Condition{Type: "Synced", Status: metav1.ConditionTrue, Reason: "ReconcileSuccess"}
-	changed := c.Aggregate(parent, children, applicationAggregation, local)
+	changed, err := c.Aggregate(parent, children, applicationAggregation, local)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	ready, _ := c.Lookup(parent, "Ready")
 	fmt.Println("changed:", changed)
 	fmt.Println(ready.Status, ready.Reason)
 	fmt.Println(ready.Message)
-	fmt.Println("same observations:", c.Aggregate(parent, children, applicationAggregation, local))
+	changed, err = c.Aggregate(parent, children, applicationAggregation, local)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println("same observations:", changed)
 	// Output:
 	// changed: true
 	// False ConditionsNotSatisfied

@@ -46,8 +46,11 @@ func TestSchemaTranslationAndPublication(t *testing.T) {
 	child := observation("Available", metav1.ConditionFalse, "InvalidConfiguration")
 	parent := &object{ObjectMeta: metav1.ObjectMeta{Generation: 7}}
 	root := &object{}
-	if !c.Aggregate(parent, map[string]c.Object{"database": child}, middle) {
+	if changed, err := c.Aggregate(parent, map[string]c.Object{"database": child}, middle); err != nil || !changed {
 		t.Fatal("first call unchanged")
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	fault, _ := c.Lookup(parent, "Faulted")
 	if fault.Status != metav1.ConditionTrue || fault.Reason != "ConditionsWaitingForHuman" || fault.ObservedGeneration != 7 {
@@ -56,17 +59,26 @@ func TestSchemaTranslationAndPublication(t *testing.T) {
 	if !strings.Contains(fault.Message, "database: InvalidConfiguration") {
 		t.Fatal(fault.Message)
 	}
-	c.AggregateSlice(root, []c.Object{parent}, top)
+	if _, err := c.AggregateSlice(root, []c.Object{parent}, top); err != nil {
+		t.Fatal(err)
+	}
 	healthy, _ := c.Lookup(root, "Healthy")
 	if healthy.Status != metav1.ConditionFalse || healthy.Reason != "ConditionsWaitingForHuman" {
 		t.Fatalf("published contract lost escalation/polarity: %#v", healthy)
 	}
-	if c.Aggregate(parent, map[string]c.Object{"database": child}, middle) {
+	if changed, err := c.Aggregate(parent, map[string]c.Object{"database": child}, middle); err != nil || changed {
 		t.Fatal("not idempotent")
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	child.conditions[0].Status = metav1.ConditionTrue
-	c.AggregateSlice(parent, []c.Object{child}, middle)
-	c.AggregateSlice(root, []c.Object{parent}, top)
+	if _, err := c.AggregateSlice(parent, []c.Object{child}, middle); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.AggregateSlice(root, []c.Object{parent}, top); err != nil {
+		t.Fatal(err)
+	}
 	healthy, _ = c.Lookup(root, "Healthy")
 	if healthy.Status != metav1.ConditionTrue {
 		t.Fatalf("did not recover: %#v", healthy)
@@ -76,7 +88,9 @@ func TestSchemaTranslationAndPublication(t *testing.T) {
 func TestIdentityNormalizesBothSchemas(t *testing.T) {
 	a := define(contract("Ready", c.FalseIsGood), c.Child(contract("Ready", c.TrueIsGood), c.Identity))
 	p := &object{}
-	c.AggregateSlice(p, []c.Object{observation("Ready", metav1.ConditionTrue, "Fine")}, a)
+	if _, err := c.AggregateSlice(p, []c.Object{observation("Ready", metav1.ConditionTrue, "Fine")}, a); err != nil {
+		t.Fatal(err)
+	}
 	if value, _ := c.Lookup(p, "Ready"); value.Status != metav1.ConditionFalse {
 		t.Fatalf("identity copied raw encoding: %#v", value)
 	}
@@ -101,7 +115,9 @@ func TestSchemaScopesAndFilters(t *testing.T) {
 			s := contract("Available", c.TrueIsGood)
 			a := define(contract("Ready", c.TrueIsGood), c.Child(s, c.Classify(c.Map("Available", "Ready"))).For(tc.scope))
 			p := &object{}
-			c.AggregateSlice(p, []c.Object{scopeObject(tc.group, tc.version, tc.kind, observation("Available", metav1.ConditionTrue, "Fine"))}, a)
+			if _, err := c.AggregateSlice(p, []c.Object{scopeObject(tc.group, tc.version, tc.kind, observation("Available", metav1.ConditionTrue, "Fine"))}, a); err != nil {
+				t.Fatal(err)
+			}
 			if value, _ := c.Lookup(p, "Ready"); value.Status != metav1.ConditionTrue {
 				t.Fatalf("scope not routed: %#v", value)
 			}
@@ -119,7 +135,9 @@ func TestSchemaScopesAndFilters(t *testing.T) {
 		a := define(contract("Ready", c.TrueIsGood), bindings...)
 		for _, tc := range []struct{ g, v, k, name string }{{"db.io", "v1", "Database", "Exact"}, {"db.io", "v1", "Other", "Version"}, {"db.io", "v2", "Other", "Group"}, {"other.io", "v1", "Other", "Global"}} {
 			p := &object{}
-			c.AggregateSlice(p, []c.Object{scopeObject(tc.g, tc.v, tc.k, observation(tc.name, metav1.ConditionTrue, "Fine"))}, a)
+			if _, err := c.AggregateSlice(p, []c.Object{scopeObject(tc.g, tc.v, tc.k, observation(tc.name, metav1.ConditionTrue, "Fine"))}, a); err != nil {
+				t.Fatal(err)
+			}
 			if value, _ := c.Lookup(p, "Ready"); value.Status != metav1.ConditionTrue {
 				t.Fatalf("wrong specificity for %#v: %#v", tc, value)
 			}
@@ -175,7 +193,9 @@ func TestAllUnknownLocalAndOverrides(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := &object{}
-			c.AggregateSlice(p, tc.children, a)
+			if _, err := c.AggregateSlice(p, tc.children, a); err != nil {
+				t.Fatal(err)
+			}
 			v, _ := c.Lookup(p, "Ready")
 			if v.Status != tc.status || v.Reason != tc.reason {
 				t.Fatalf("%#v", v)
@@ -184,19 +204,25 @@ func TestAllUnknownLocalAndOverrides(t *testing.T) {
 	}
 	p := &object{}
 	local := metav1.Condition{Type: "Ready", Status: metav1.ConditionUnknown, Reason: "LocalUnknown"}
-	c.AggregateSlice(p, []c.Object{observation("Ready", metav1.ConditionTrue, "Fine")}, a, local)
+	if _, err := c.AggregateSlice(p, []c.Object{observation("Ready", metav1.ConditionTrue, "Fine")}, a, local); err != nil {
+		t.Fatal(err)
+	}
 	if v, _ := c.Lookup(p, "Ready"); v.Reason != "LocalUnknown" {
 		t.Fatal(v)
 	}
 	localOnly := c.Define(c.Definition{Outputs: []c.OutputDefinition{c.Local("Ready", s.Conditions["Ready"])}})
 	p = &object{}
-	c.Aggregate(p, nil, localOnly)
+	if _, err := c.Aggregate(p, nil, localOnly); err != nil {
+		t.Fatal(err)
+	}
 	if len(p.conditions) != 0 {
 		t.Fatal("local assertion invented")
 	}
 	local.Status = metav1.ConditionTrue
 	local.ObservedGeneration = 3
-	c.Aggregate(p, nil, localOnly, local)
+	if _, err := c.Aggregate(p, nil, localOnly, local); err != nil {
+		t.Fatal(err)
+	}
 	if v, _ := c.Lookup(p, "Ready"); v.Status != metav1.ConditionTrue || v.ObservedGeneration != 3 {
 		t.Fatal(v)
 	}
@@ -213,8 +239,12 @@ func TestAtomicityImmutabilityAndSlice(t *testing.T) {
 	delete(exported.Conditions, "Ready")
 	child := scopeObject("db.io", "v1", "Database", observation("Ready", metav1.ConditionFalse, "Broken"))
 	p, q := &object{}, &object{}
-	c.AggregateSlice(p, []c.Object{nil, child}, a)
-	c.Aggregate(q, map[string]c.Object{"1": child}, a)
+	if _, err := c.AggregateSlice(p, []c.Object{nil, child}, a); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Aggregate(q, map[string]c.Object{"1": child}, a); err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(p.conditions, q.conditions) {
 		t.Fatal("map/slice differ")
 	}
@@ -224,14 +254,21 @@ func TestAtomicityImmutabilityAndSlice(t *testing.T) {
 	before := append([]metav1.Condition(nil), p.conditions...)
 	sets := p.sets
 	local := metav1.Condition{Type: "Ready", Status: metav1.ConditionTrue, Reason: "Local"}
-	assertPanic(t, "duplicate local", func() { c.Aggregate(p, nil, a, local, local) })
+	if changed, err := c.Aggregate(p, nil, a, local, local); err == nil || changed {
+		t.Fatalf("changed=%v, err=%v", changed, err)
+	}
 	if p.sets != sets || !reflect.DeepEqual(before, p.conditions) {
 		t.Fatal("partial mutation on failure")
 	}
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
-		go func() { defer wg.Done(); c.AggregateSlice(&object{}, []c.Object{child}, a) }()
+		go func() {
+			defer wg.Done()
+			if _, err := c.AggregateSlice(&object{}, []c.Object{child}, a); err != nil {
+				t.Error(err)
+			}
+		}()
 	}
 	wg.Wait()
 }
@@ -243,14 +280,18 @@ func TestFilteringAndConditionalParticipation(t *testing.T) {
 		c.Map("Available", "Ready").When(c.Status(metav1.ConditionFalse)), c.Ignore("Synced"),
 	)).For(c.G("db.io")))
 	p := &object{}
-	c.AggregateSlice(p, []c.Object{
+	if _, err := c.AggregateSlice(p, []c.Object{
 		scopeObject("other.io", "v1", "Database", observation("Available", metav1.ConditionFalse, "Ignored")),
 		scopeObject("db.io", "v1", "Database", observation("Available", metav1.ConditionTrue, "Filtered")),
-	}, a)
+	}, a); err != nil {
+		t.Fatal(err)
+	}
 	if v, _ := c.Lookup(p, "Ready"); v.Status != metav1.ConditionUnknown {
 		t.Fatal(v)
 	}
-	c.AggregateSlice(p, []c.Object{scopeObject("db.io", "v1", "Database", observation("Available", metav1.ConditionFalse, "Broken"))}, a)
+	if _, err := c.AggregateSlice(p, []c.Object{scopeObject("db.io", "v1", "Database", observation("Available", metav1.ConditionFalse, "Broken"))}, a); err != nil {
+		t.Fatal(err)
+	}
 	if v, _ := c.Lookup(p, "Ready"); v.Status != metav1.ConditionFalse {
 		t.Fatal(v)
 	}

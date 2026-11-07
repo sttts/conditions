@@ -80,7 +80,7 @@ Crossplane has a variadic `SetConditions(...Condition)` and a single-type `GetCo
 `Resource` is a small example CRD fixture embedding standard ObjectMeta and the real Crossplane `ConditionedStatus`, not a new input bundle required by the library. A consuming controller can bind the same adapter logic to its actual resource type.
 
 ```go
-changed := c.Aggregate(
+changed, err := c.Aggregate(
     crossplane.Adapter{Resource: parent},
     map[string]c.Object{
         "database": crossplane.Adapter{Resource: database},

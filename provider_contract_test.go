@@ -25,8 +25,11 @@ func TestProvidersFromSeparatePackages(t *testing.T) {
 	parent := &object{ObjectMeta: metav1.ObjectMeta{Generation: 7}}
 	for _, status := range []metav1.ConditionStatus{metav1.ConditionFalse, metav1.ConditionTrue} {
 		base := metav1.Condition{Type: "Ready", Status: status, Reason: "LocalObservation", Message: "detail"}
-		if changed := c.Aggregate(parent, nil, aggregation, base); !changed {
+		if changed, err := c.Aggregate(parent, nil, aggregation, base); err != nil || !changed {
 			t.Fatalf("no change")
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 		for _, name := range []string{"Ready", "Observed"} {
 			value, _ := c.Lookup(parent, name)
@@ -35,8 +38,11 @@ func TestProvidersFromSeparatePackages(t *testing.T) {
 			}
 		}
 		before := append([]metav1.Condition(nil), parent.GetConditions()...)
-		if changed := c.Aggregate(parent, nil, aggregation, base); changed {
+		if changed, err := c.Aggregate(parent, nil, aggregation, base); err != nil || changed {
 			t.Fatalf("repeat changed")
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 		if !reflect.DeepEqual(before, parent.GetConditions()) {
 			t.Fatal("repeat changed metadata")

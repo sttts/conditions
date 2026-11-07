@@ -305,7 +305,11 @@ func Example_infra() {
 		Children: []c.ChildBinding{c.Child(InputSchema, c.Identity)},
 		Now:      func() time.Time { return time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC) },
 	})
-	changed := c.Aggregate(parent, map[string]Object{"Worker": worker}, aggregation, synced, available, nonDegraded, upToDate)
+	changed, err := c.Aggregate(parent, map[string]Object{"Worker": worker}, aggregation, synced, available, nonDegraded, upToDate)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	fmt.Println("changed:", changed)
 	for _, typ := range []string{"Available", "Initialized", "NonDegraded", "UpToDate", "Synced"} {
 		condition, _ := Lookup(parent, typ)
@@ -322,7 +326,10 @@ func Example_infra() {
 		metav1.Condition{Type: "Synced", Status: metav1.ConditionTrue, Reason: "Synced"},
 		metav1.Condition{Type: "UpToDate", Status: metav1.ConditionTrue, Reason: "UpToDate"},
 	)
-	c.Aggregate(parent, map[string]Object{"Worker": worker}, aggregation, synced, available, nonDegraded, upToDate)
+	if _, err := c.Aggregate(parent, map[string]Object{"Worker": worker}, aggregation, synced, available, nonDegraded, upToDate); err != nil {
+		fmt.Println(err)
+		return
+	}
 	phase, _ = presentation.Present(parent)
 	fmt.Println("recovered:", phase)
 

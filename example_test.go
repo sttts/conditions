@@ -17,11 +17,19 @@ func ExampleAggregate_customReducer() {
 		Conditions: []metav1.Condition{{Type: "Ready", Status: metav1.ConditionFalse,
 			Reason: "Provisioning", Message: "waiting for endpoint", ObservedGeneration: 3}}}
 	localReady := metav1.Condition{Type: "Ready", Status: metav1.ConditionTrue, Reason: "LocalChecksPassed"}
-	changed := updateReadiness(parent, database, localReady)
+	changed, err := updateReadiness(parent, database, localReady)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	ready, _ := conditions.Lookup(parent, "Ready")
 	fmt.Printf("changed=%t, Ready=%s, reason=%s\n", changed, ready.Status, ready.Reason)
 	fmt.Println(ready.Message)
-	changed = updateReadiness(parent, database, localReady)
+	changed, err = updateReadiness(parent, database, localReady)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	fmt.Printf("same observations: changed=%t\n", changed)
 	// Output:
 	// changed=true, Ready=False, reason=ChildrenNotReady
@@ -35,7 +43,7 @@ func updateReadiness(
 	parent conditions.Conditioned,
 	database conditions.Object,
 	localReady metav1.Condition,
-) bool {
+) (bool, error) {
 	ready := conditions.ConditionType{Type: "Ready", Polarity: conditions.TrueIsGood}
 	policy := readiness{Condition: ready}
 	aggregation := conditions.Define(conditions.Definition{

@@ -61,7 +61,7 @@ for the common cases.
 The controller's invocation is fixed:
 
 ```go
-changed := conditions.Aggregate(parent, children, Aggregation, localConditions...)
+changed, err := conditions.Aggregate(parent, children, Aggregation, localConditions...)
 // children: map[string]conditions.Object; keys are diagnostic names.
 
 changed = conditions.AggregateSlice(parent, childSlice, Aggregation, localConditions...)
@@ -166,11 +166,14 @@ There is no GVR, RESTMapper, discovery, or generic resolver API.
 A populated GVK takes precedence; an incomplete one is an error. Otherwise the scheme supplies
 the registered GVKs. Helpers check ambiguity **after projection**: several versions of one
 GroupKind are valid for `GK`, but ambiguous for `GVK`. Helpers panic on configuration errors.
-During aggregation, every candidate GVK must select the same binding (or all be unmatched).
-`EvaluateAggregation` returns resolution errors; `Aggregate` panics before the setter runs.
+`Define` snapshots scheme registrations for condition-bearing types and checks that every
+candidate GVK selects the same binding (or all are unmatched). Ambiguity is a construction
+error. `Aggregate` and `AggregateSlice` return `(bool, error)`; runtime resolution errors
+return `false, err` before the setter runs.
 Missing identity is never silently treated as a scope mismatch.
 
-Finish scheme registration before use and do not mutate it concurrently with evaluations.
+Finish scheme registration before `Define`. Later registrations do not affect an existing
+aggregation; construct a new one to use them. Do not mutate a scheme concurrently with construction.
 Neither helpers nor aggregation modify object TypeMeta. For adapters that are not
 `runtime.Object`, use `conditions.WithGVK(child, gvk)`. Global-only definitions require no
 API identity or scheme. Map keys never influence schema selection.
@@ -265,9 +268,9 @@ including retained conditions.
 ## Validation and extension contracts
 
 `Define` validates programmer configuration and panics on errors; use it in package variables
-or during startup. `Aggregate`/`AggregateSlice` return only `bool`: invalid caller input such as
-duplicate local assertions also panics **before the setter runs**, never masquerading as
-`changed=false`. Missing conditions and Unknown are normal observations. For returned
+or during startup. `Aggregate`/`AggregateSlice` return `(bool, error)`: invalid caller input such as
+duplicate local assertions returns `false, err` **before the setter runs**. On success,
+the boolean is the native setter's change flag. Missing conditions and Unknown are normal observations. For returned
 runtime errors and pure evaluation, use `Evaluate` for one output or `EvaluateAggregation`
 for the complete desired slice.
 

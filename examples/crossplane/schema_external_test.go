@@ -36,10 +36,14 @@ func ExampleDefine() {
 	database.Status.SetConditions(xpv1.Creating().WithMessage("waiting for endpoint"))
 	worker := crossplane.Adapter{Resource: &crossplane.Resource{}}
 	worker.SetConditions([]metav1.Condition{{Type: "Available", Status: metav1.ConditionTrue, Reason: "Serving"}})
-	changed := c.Aggregate(parent, map[string]c.Object{
+	changed, err := c.Aggregate(parent, map[string]c.Object{
 		"database": c.WithGVK(database, schema.GroupVersionKind{Group: "database.example.io", Version: "v1", Kind: "Database"}),
 		"worker":   c.WithGVK(worker, schema.GroupVersionKind{Group: "infra.example.io", Version: "v1", Kind: "Worker"}),
 	}, application, crossplane.ToCondition(xpv1.ReconcileSuccess()))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	value, _ := c.Lookup(parent, "Ready")
 	fmt.Println(changed, value.Status)
 	fmt.Println(value.Message)
@@ -59,7 +63,9 @@ func TestPublishedSchemasAcrossModulesAndLevels(t *testing.T) {
 		"database": c.WithGVK(database, schema.GroupVersionKind{Group: "database.example.io", Version: "v1", Kind: "Database"}),
 		"worker":   c.WithGVK(worker, schema.GroupVersionKind{Group: "infra.example.io", Version: "v2", Kind: "Worker"}),
 	}
-	c.Aggregate(parent, children, application, crossplane.ToCondition(xpv1.ReconcileSuccess()))
+	if _, err := c.Aggregate(parent, children, application, crossplane.ToCondition(xpv1.ReconcileSuccess())); err != nil {
+		t.Fatal(err)
+	}
 	if value, _ := c.Lookup(parent, "Ready"); value.Reason != "ConditionsFailed" {
 		t.Fatalf("lost provider's escalation: %#v", value)
 	}
@@ -69,7 +75,9 @@ func TestPublishedSchemasAcrossModulesAndLevels(t *testing.T) {
 	})
 	root := crossplane.Adapter{Resource: &crossplane.Resource{}}
 	typedParent := c.WithGVK(parent, schema.GroupVersionKind{Group: "apps.example.io", Version: "v1", Kind: "Application"})
-	c.AggregateSlice(root, []c.Object{typedParent}, next)
+	if _, err := c.AggregateSlice(root, []c.Object{typedParent}, next); err != nil {
+		t.Fatal(err)
+	}
 	if value, _ := c.Lookup(root, "Ready"); value.Status != metav1.ConditionFalse || value.Reason != "ConditionsFailed" {
 		t.Fatalf("publication/identity lost escalation: %#v", value)
 	}
@@ -77,12 +85,16 @@ func TestPublishedSchemasAcrossModulesAndLevels(t *testing.T) {
 		t.Fatal("child reconciliation promoted to parent")
 	}
 	worker.SetConditions([]metav1.Condition{{Type: "Available", Status: metav1.ConditionTrue, Reason: "Serving"}})
-	c.Aggregate(parent, children, application)
-	c.AggregateSlice(root, []c.Object{typedParent}, next)
+	if _, err := c.Aggregate(parent, children, application); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.AggregateSlice(root, []c.Object{typedParent}, next); err != nil {
+		t.Fatal(err)
+	}
 	if value, _ := c.Lookup(root, "Ready"); value.Status != metav1.ConditionTrue {
 		t.Fatal(value)
 	}
-	if c.AggregateSlice(root, []c.Object{typedParent}, next) {
+	if changed, err := c.AggregateSlice(root, []c.Object{typedParent}, next); err != nil || changed {
 		t.Fatal("repeat changed output")
 	}
 }

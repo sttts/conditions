@@ -5,6 +5,13 @@
 ```go
 type Formatter interface {
     Format(summary string, causes []Cause) string
+}
+```
+
+Short presentation is optional and separate:
+
+```go
+type InlineFormatter interface {
     Inline(condition metav1.Condition) string
 }
 ```

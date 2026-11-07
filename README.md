@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/conditions-logo.png" alt="Conditions logo" width="360">
+</p>
+
 # Conditions
 
 Compose Kubernetes Conditions across Go packages and controller boundaries. A database can

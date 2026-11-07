@@ -11,28 +11,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Compose selects rule values from independent packages, without registration.
-// It rejects invalid definitions and missing or cyclic dependencies before use.
-// The returned slice is new; policy implementations must be pure and safe to share.
-// Set the returned Rules.Now to inject a clock for the complete evaluation.
-func Compose(groups ...[]Rule) (Rules, error) {
-	rules := Rules{}
-	for _, group := range groups {
-		rules.Outputs = append(rules.Outputs, group...)
-	}
-	if _, _, err := plan(rules); err != nil {
-		return Rules{}, err
-	}
-	return rules, nil
-}
-
 // plan validates definitions even when no local base will activate them.
-func plan(rules Rules) ([]Rule, map[string]string, error) {
-	definitions := make(map[string]Rule, len(rules.Outputs))
+func plan(rules evaluationPlan) ([]compiledRule, map[string]string, error) {
+	definitions := make(map[string]compiledRule, len(rules.Outputs))
 	owners := make(map[string]string, len(rules.Outputs))
 	for _, rule := range rules.Outputs {
 		name := rule.Output.Type
-		if name == "" || isNil(rule.Parent) || isNil(rule.Reduction) || isNil(rule.Messages) {
+		if name == "" || isNil(rule.Parent) || isNil(rule.Reduction) || isNil(rule.Formatter) {
 			return nil, nil, fmt.Errorf("incomplete aggregation for %q", name)
 		}
 		if _, exists := owners[name]; exists {
@@ -63,7 +48,7 @@ func plan(rules Rules) ([]Rule, map[string]string, error) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	var ordered []Rule
+	var ordered []compiledRule
 	state := map[string]uint8{}
 	var visit func(string) error
 	visit = func(name string) error {
@@ -98,9 +83,9 @@ func plan(rules Rules) ([]Rule, map[string]string, error) {
 	return ordered, owners, nil
 }
 
-// Evaluate computes desired Conditions without modifying the supplied objects.
-// Rules read a shared input snapshot plus only their declared dependency results.
-func Evaluate(parent Object, children map[string]Object, rules Rules, local ...metav1.Condition) ([]metav1.Condition, error) {
+// evaluate computes desired Conditions without modifying the supplied objects.
+// evaluationPlan read a shared input snapshot plus only their declared dependency results.
+func evaluate(parent Object, children map[string]Object, rules evaluationPlan, local ...metav1.Condition) ([]metav1.Condition, error) {
 	if isNil(parent) {
 		return nil, fmt.Errorf("parent is nil")
 	}
@@ -141,7 +126,7 @@ func Evaluate(parent Object, children map[string]Object, rules Rules, local ...m
 				view.SetConditions(value)
 			}
 		}
-		value, err := rule.Evaluate(view, children, base, now)
+		value, err := rule.evaluate(view, children, base, now)
 		if err != nil {
 			return nil, err
 		}

@@ -6,10 +6,10 @@ This package publishes `Aggregation` and `Schema = Aggregation.Schema()` as ordi
 values. Consumers import `Schema`, bind it using `conditions.Child`, and choose explicit
 `Classify` mappings or `Identity`. See [schema.go](schema.go) for the definition and the
 [root README](../../README.md) for the API. Each output declares its contract and derivation together. Domain logic is ordinary Go;
-the low-level rules below remain the independent reference for compatibility tests.
+historical configurations are confined to test files and the frozen reference evaluator.
 
 
-This example uses Crossplane's actual `Condition`, `ConditionedStatus`, and constructors from `crossplane-runtime/v2` v2.0.0. It supplies a representation adapter and an explicit example readiness policy to the shared root `conditions.ApplyRules` implementation.
+This example uses Crossplane's actual `Condition`, `ConditionedStatus`, and constructors from `crossplane-runtime/v2` v2.0.0. It supplies a representation adapter and an explicit example readiness policy to the shared root `conditions.Aggregate` implementation.
 
 ## Condition setup
 
@@ -33,35 +33,29 @@ Crossplane's [Condition definitions](https://github.com/crossplane/crossplane-ru
 
 `ReconcileError` may mean an update failed or an observation failed. It does not universally invalidate a supplied `Ready=True` assertion. `Healthy` is reserved and not implemented in this pinned API version; it is not used as an input here.
 
-### Rule data and precedence
+### Output definition and precedence
 
-The complete Ready setup is equivalent to the following data. Here `c` imports the root library, `crossplane` imports this example module, and `metav1` imports API machinery's metadata package:
-
-```go
-ready := c.ConditionType{Type: "Ready", Polarity: c.TrueIsGood}
-rules := c.Rules{Outputs: []c.Rule{{
-    Output:      ready,
-    DefaultBase: &metav1.Condition{Type: "Ready", Status: metav1.ConditionTrue, Reason: "Available"},
-    Parent:      c.LocalBaseFirst{Base: ready},
-    Children:    crossplane.ReadyChildren{},
-    Reduction:   crossplane.Readiness{},
-    Messages:    c.BoundedMessages{MaxLines: 7},
-}}}
-```
-
-Ready uses `TrueIsGood` on both input and output. `ReadyChildren` and `Readiness` are this example's selector and reducer; `LocalBaseFirst` and the formatter come from the library. The good default base is an explicit policy assumption for omitted local Ready, not a readiness observation inferred by the library. It schedules the output even when the call supplies only local Synced. Missing Ready on a supplied child still contributes Unknown. An empty child set leaves the otherwise-good base sufficient.
-
-[`CrossplaneRules`](crossplane.go) selects `ReadinessRule()`. The constructor returns an independently composable `c.Rule`, not evaluation-wide settings:
+`ReadyOutput` in [schema.go](schema.go) declares the contract, default base, native Readiness
+reducer and BoundedMessages formatter together. `Aggregation` combines it with a local Synced
+output and a binding to NativeSchema. `Schema = Aggregation.Schema()` publishes the result.
 
 ```go
-rules, err := c.Compose([]c.Rule{crossplane.ReadinessRule()})
+aggregation := c.Define(c.Definition{
+    Outputs: []c.OutputDefinition{
+        crossplane.ReadyOutput,
+        c.Output("Synced", c.Spec{Polarity: c.TrueIsGood}).Local(),
+    },
+    Children: []c.ChildBinding{c.Child(crossplane.NativeSchema, c.Identity)},
+})
 ```
 
-The [cross-module controller call](compose_external_test.go) additionally selects `lifecycle.InfraSynced` from the separate Infra module, without enabling its other axes. It tests local-vs-child sync independence, unchanged opaque diagnostics, recovery, and idempotence. This example module's additional Infra dependency is only for that external-package composition test; neither the core nor readiness policy imports Infra.
+The [cross-module example](compose_external_test.go) composes `crossplane.ReadyOutput` with
+`lifecycle.SyncedOutput`, including Infra's local prefix checks, using ordinary Go values.
+Neither provider imports the other. Unselected Infra outputs remain disabled.
 
 The selected readiness policy is:
 
-- ApplyRules child Ready assertions into parent Ready. Known bad outranks Unknown; all supplied children must be good for a good result. No children means that an otherwise-good local base is sufficient.
+- Combine child Ready assertions into parent Ready. Known bad outranks Unknown; all supplied children must be good for a good result. No children means that an otherwise-good local base is sufficient.
 - Preserve a supplied local bad or unknown Ready base. Otherwise use the declared good default and the child results.
 - Publish `Available` for success, `Creating` while a child is not ready, and the explicitly configured `ReadinessUnknown` for missing/unknown readiness. The diagnostic summary identifies this as waiting for composed resources.
 - Preserve local Synced independently. A child's Synced is not promoted into the parent's reconciliation status; Synced is optional and is not an automatic validity gate.
@@ -77,7 +71,7 @@ This is a chosen aggregation policy over native Crossplane assertions, not a cla
 | Good base and all selected children ready | Ready=True/Available. |
 | Supplied local Synced | Preserve it as the parent's local Synced; the child's Synced never substitutes for it. |
 
-There is no Synced output aggregation or sync validity gate in this setup. Omitting local Synced creates no new Synced assertion; an existing one remains unless the caller replaces it. All child readiness contributions have no failure/human-wait escalation. Derived Ready uses the parent's generation, while supplied local Synced retains its own observed-generation value.
+Synced is explicitly local-only; there is no child-sync validity gate. Omitting local Synced creates no new Synced assertion; an existing one remains unless the caller replaces it. All child readiness contributions have no failure/human-wait escalation. Derived Ready uses the parent's generation, while supplied local Synced retains its own observed-generation value.
 
 ## Adapter and invocation
 
@@ -86,12 +80,12 @@ Crossplane has a variadic `SetConditions(...Condition)` and a single-type `GetCo
 `Resource` is a small example CRD fixture embedding standard ObjectMeta and the real Crossplane `ConditionedStatus`, not a new input bundle required by the library. A consuming controller can bind the same adapter logic to its actual resource type.
 
 ```go
-changed, err := c.ApplyRules(
+changed := c.Aggregate(
     crossplane.Adapter{Resource: parent},
     map[string]c.Object{
         "database": crossplane.Adapter{Resource: database},
     },
-    crossplane.CrossplaneRules,
+    crossplane.Aggregation,
     crossplane.ToCondition(xpv1.ReconcileSuccess()),
 )
 ```

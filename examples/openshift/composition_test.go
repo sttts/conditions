@@ -11,14 +11,12 @@ import (
 )
 
 func TestSelectOneUnion(t *testing.T) {
-	rules, err := c.Compose([]c.Rule{UnionRule(degraded)})
-	if err != nil {
-		t.Fatal(err)
-	}
+	aggregation := c.Define(c.Definition{
+		Outputs:  []c.OutputDefinition{unionOutput("Degraded", c.Spec{Polarity: c.FalseIsGood})},
+		Children: []c.ChildBinding{c.Child(OperatorSchema, c.Identity)},
+	})
 	parent := ClusterOperator{&configv1.ClusterOperator{}}
-	if _, err := c.ApplyRules(parent, nil, rules); err != nil {
-		t.Fatal(err)
-	}
+	c.Aggregate(parent, nil, aggregation)
 	if len(parent.GetConditions()) != 1 {
 		t.Fatal("selecting one union enabled other axes")
 	}

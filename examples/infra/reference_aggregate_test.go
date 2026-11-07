@@ -1875,7 +1875,7 @@ func TestReferenceAggregateSubConditions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual, err := LocalChecks(tt.cond.Type).Evaluate(tt.parent, nil, tt.cond, parentTime.Time)
+			actual, err := legacyLocalChecks(tt.cond.Type).Evaluate(tt.parent, nil, tt.cond, parentTime.Time)
 			if err != nil {
 				t.Fatal(err)
 			}

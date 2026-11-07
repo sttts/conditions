@@ -5,15 +5,16 @@ package crossplane
 
 import (
 	c "github.com/sttts/conditions"
+	ref "github.com/sttts/conditions/internal/testreference"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"reflect"
 	"sort"
 	"testing"
 )
 
-func applyDefined(t *testing.T, parent c.Conditioned, children map[string]c.Object, rules c.Rules, local ...metav1.Condition) (bool, error) {
+func applyDefined(t *testing.T, parent c.Conditioned, children map[string]c.Object, rules ref.Rules, local ...metav1.Condition) (bool, error) {
 	t.Helper()
-	want, err := c.Evaluate(parent, children, rules, local...)
+	want, err := ref.Evaluate(parent, children, rules, local...)
 	if err != nil {
 		return false, err
 	}

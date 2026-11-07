@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package conditions aggregates supplied Kubernetes Conditions with flat, caller-defined rules.
+// Package conditions aggregates supplied Kubernetes Conditions using reusable schemas and Go definitions.
 package conditions
 
 import (
@@ -79,11 +79,11 @@ type Derivation interface {
 	Derive(parent Object, now time.Time) []metav1.Condition
 }
 
-// Rules selects independently supplied aggregations for one resource boundary.
+// evaluationPlan selects independently supplied aggregations for one resource boundary.
 // Output order is not evaluation order; Requires declares current-call dependencies.
 // Unowned local Conditions are copied unchanged apart from transition timestamps.
-type Rules struct {
-	Outputs []Rule
+type evaluationPlan struct {
+	Outputs []compiledRule
 	Now     func() time.Time
 }
 
@@ -192,8 +192,8 @@ const (
 	NoObservedGeneration
 )
 
-// Rule is a flat value composing implementations of Conditions concepts.
-type Rule struct {
+// compiledRule is a flat value composing implementations of Conditions concepts.
+type compiledRule struct {
 	// Requires names selected outputs whose current-call results are visible to this rule.
 	// Other rules' new results are isolated; previous persisted Conditions remain readable.
 	Requires    []string
@@ -204,16 +204,16 @@ type Rule struct {
 	Local       LocalSelector
 	Children    ChildSelector
 	Reduction   Reducer
-	Messages    Formatter
+	Formatter   Formatter
 	Generation  GenerationPolicy
 }
 
-// Evaluate derives one desired Condition without modifying the supplied objects.
-func (a Rule) Evaluate(parent Object, children map[string]Object, base metav1.Condition, now time.Time) (*metav1.Condition, error) {
+// evaluate derives one desired Condition without modifying the supplied objects.
+func (a compiledRule) evaluate(parent Object, children map[string]Object, base metav1.Condition, now time.Time) (*metav1.Condition, error) {
 	if isNil(parent) {
 		return nil, fmt.Errorf("parent is nil")
 	}
-	if a.Output.Type == "" || isNil(a.Parent) || isNil(a.Reduction) || isNil(a.Messages) {
+	if a.Output.Type == "" || isNil(a.Parent) || isNil(a.Reduction) || isNil(a.Formatter) {
 		return nil, fmt.Errorf("incomplete aggregation for %q", a.Output.Type)
 	}
 	outcome, done := a.Parent.Before(parent, children, base)
@@ -266,20 +266,10 @@ func (a Rule) Evaluate(parent Object, children map[string]Object, base metav1.Co
 		transition = old.LastTransitionTime
 	}
 	return &metav1.Condition{Type: a.Output.Type, Status: status, Reason: outcome.Reason,
-		Message: a.Messages.Format(outcome.Summary, outcome.Causes), ObservedGeneration: generation,
+		Message: a.Formatter.Format(outcome.Summary, outcome.Causes), ObservedGeneration: generation,
 		LastTransitionTime: transition}, nil
 }
 
-// ApplyRules applies the configured rules to existing objects and reports in-memory changes.
-func ApplyRules(parent Conditioned, children map[string]Object, rules Rules, local ...metav1.Condition) (bool, error) {
-	desired, err := Evaluate(parent, children, rules, local...)
-	if err != nil {
-		return false, err
-	}
-	return parent.SetConditions(desired), nil
-}
-
-// ReasonSuffix assigns escalation to a matching reason suffix.
 type ReasonSuffix struct {
 	Suffix     string
 	Escalation Escalation

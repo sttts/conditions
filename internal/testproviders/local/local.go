@@ -9,10 +9,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Rules supplies one local-only readiness assertion; callers supply the base.
-func Rules() []c.Rule {
-	ready := c.ConditionType{Type: "Ready"}
-	return []c.Rule{{Output: ready, Parent: c.LocalOnly{LocalBaseFirst: c.LocalBaseFirst{Base: ready}}, Reduction: copyBase{}, Messages: c.MultilineMessages{}}}
+// Outputs supplies one local assertion without importing other providers.
+func Outputs() []c.OutputDefinition {
+	return []c.OutputDefinition{{Name: "Ready", LocalOnly: true, Reduction: copyBase{}, Formatter: c.MultilineMessages{}}}
 }
 
 type copyBase struct{}

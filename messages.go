@@ -14,6 +14,11 @@ import (
 // Formatter renders diagnostics separately from semantic selection and reduction.
 type Formatter interface {
 	Format(summary string, causes []Cause) string
+}
+
+// InlineFormatter renders a short presentation of an existing condition.
+// Aggregation does not require or call it.
+type InlineFormatter interface {
 	Inline(condition metav1.Condition) string
 }
 

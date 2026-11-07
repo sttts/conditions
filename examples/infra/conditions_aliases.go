@@ -16,7 +16,6 @@ type (
 	Setter            = c.Setter
 	Conditioned       = c.Conditioned
 	Derivation        = c.Derivation
-	Rules             = c.Rules
 	ConditionType     = c.ConditionType
 	Classifier        = c.Classifier
 	Propagation       = c.Propagation
@@ -25,11 +24,11 @@ type (
 	ParentPolicy      = c.ParentPolicy
 	Reducer           = c.Reducer
 	Formatter         = c.Formatter
+	InlineFormatter   = c.InlineFormatter
 	Presenter         = c.Presenter
 	Cause             = c.Cause
 	Contribution      = c.Contribution
 	Outcome           = c.Outcome
-	Rule              = c.Rule
 	ReasonSuffix      = c.ReasonSuffix
 	ReasonClassifier  = c.ReasonClassifier
 	Always            = c.Always
@@ -59,7 +58,5 @@ const (
 )
 
 var (
-	ApplyRules = c.ApplyRules
-	Evaluate   = c.Evaluate
-	Lookup     = c.Lookup
+	Lookup = c.Lookup
 )

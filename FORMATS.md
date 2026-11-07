@@ -9,7 +9,7 @@ type Formatter interface {
 }
 ```
 
-The reducer supplies a summary and named causes. The selected formatter produces the Condition message; `Inline` produces a separate concise presentation, using the Condition reason when its message is empty. An aggregation selects a formatter through `Rule.Messages`. Applications may implement additional formats through the same interface.
+The reducer supplies a summary and named causes. The selected formatter produces the Condition message; `Inline` produces a separate concise presentation, using the Condition reason when its message is empty. An aggregation selects a formatter through `OutputDefinition.Formatter` or `Output(name, spec).Format(formatter)`. Applications may implement additional formats through the one-method `Formatter` interface. `InlineFormatter` is a separate optional presentation interface.
 
 ## MultilineMessages
 
@@ -68,6 +68,6 @@ Use `BoundedMessages` when source text must remain opaque. A general mechanism f
 
 ## Validation
 
-Generic tests cover promotion, condensation, explicit format selection, line endings, encoded-size limits, and UTF-8. Rule tests exercise both formats with positive and negative output polarities and different line budgets, verifying that presentation does not change failure classification.
+Generic tests cover promotion, condensation, explicit format selection, line endings, encoded-size limits, and UTF-8. Aggregation tests exercise both formats with positive and negative output polarities and different line budgets, verifying that presentation does not change failure classification.
 
 The lifecycle example's [multiline conformance tests](examples/infra/multiline_test.go) retain all six expanded/condensed message cases and eleven inline cases, calling the public format implementation. The example contains no separate formatter implementation.

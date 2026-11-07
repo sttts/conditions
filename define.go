@@ -26,7 +26,7 @@ type Definition struct {
 }
 
 // OutputDefinition declares both a published contract and its derivation.
-// Nil Parent, Reduction and Format select the standard local-precedence/All behavior.
+// Nil Parent, Reduction and Formatter select the standard local-precedence/All behavior.
 // Nil Children uses classified child bindings. A custom Children selector reads the
 // original objects and owns their interpretation, subject to the same binding scopes.
 // Callbacks and interface implementations must be read-only and concurrency-safe.
@@ -40,7 +40,7 @@ type OutputDefinition struct {
 	LocalChecks       LocalSelector
 	Children          ChildSelector
 	Reduction         Reducer
-	Format            Formatter
+	Formatter         Formatter
 	Generation        GenerationPolicy
 	Derived           []Derivation
 	DerivedConditions map[string]Spec
@@ -58,11 +58,11 @@ func (o OutputDefinition) Reduce(reducer Reducer) OutputDefinition {
 	o.Reduction = reducer
 	return o
 }
-func (o OutputDefinition) Messages(formatter Formatter) OutputDefinition {
+func (o OutputDefinition) Format(formatter Formatter) OutputDefinition {
 	if isNil(formatter) {
 		panic("conditions: nil formatter")
 	}
-	o.Format = formatter
+	o.Formatter = formatter
 	return o
 }
 
@@ -71,7 +71,7 @@ func (o OutputDefinition) Messages(formatter Formatter) OutputDefinition {
 type Aggregation struct {
 	scheme   *runtime.Scheme
 	schema   Schema
-	rules    Rules
+	rules    evaluationPlan
 	children []compiledChild
 }
 
@@ -128,7 +128,7 @@ func Define(d Definition) *Aggregation {
 	}
 	s = cloneSchema(s)
 	validateSchema(s)
-	a := &Aggregation{scheme: d.Scheme, schema: s, rules: Rules{Now: d.Now}}
+	a := &Aggregation{scheme: d.Scheme, schema: s, rules: evaluationPlan{Now: d.Now}}
 	for _, binding := range d.Children {
 		a.children = append(a.children, compileChild(binding, s))
 	}
@@ -146,16 +146,16 @@ func Define(d Definition) *Aggregation {
 	for _, o := range d.Outputs {
 		spec := s.Conditions[o.Name]
 		typ := ConditionType{Type: o.Name, Polarity: spec.Polarity}
-		rule := Rule{
+		rule := compiledRule{
 			Output: typ, Requires: append([]string(nil), o.Requires...), Derived: append([]Derivation(nil), o.Derived...),
 			Parent: o.Parent, Local: o.LocalChecks, Children: o.Children,
-			Reduction: o.Reduction, Messages: o.Format, Generation: o.Generation,
+			Reduction: o.Reduction, Formatter: o.Formatter, Generation: o.Generation,
 		}
 		if rule.Parent == nil {
 			rule.Parent = LocalBaseFirst{Base: typ, Classifier: spec.Reasons}
 		}
-		if rule.Messages == nil {
-			rule.Messages = BoundedMessages{}
+		if rule.Formatter == nil {
+			rule.Formatter = BoundedMessages{}
 		}
 		if rule.Children == nil {
 			rule.Children = classifiedSelector{aggregation: a, target: o.Name}
@@ -281,7 +281,7 @@ func EvaluateAggregation(parent Object, children map[string]Object, a *Aggregati
 			selected[name] = child
 		}
 	}
-	return Evaluate(parent, selected, a.rules, local...)
+	return evaluate(parent, selected, a.rules, local...)
 }
 
 // Aggregate applies the desired slice exactly once and returns the native setter's change flag.

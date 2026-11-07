@@ -9,15 +9,10 @@ import (
 	"testing"
 )
 
-func TestSelectReadinessRule(t *testing.T) {
-	rules, err := c.Compose([]c.Rule{ReadinessRule()})
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestSelectReadinessOutput(t *testing.T) {
+	aggregation := c.Define(c.Definition{Outputs: []c.OutputDefinition{ReadyOutput}, Children: []c.ChildBinding{c.Child(NativeSchema, c.Identity)}})
 	parent := resource()
-	if _, err := c.ApplyRules(parent, nil, rules); err != nil {
-		t.Fatal(err)
-	}
+	c.Aggregate(parent, nil, aggregation)
 	value, _ := c.Lookup(parent, "Ready")
 	if value.Status != metav1.ConditionTrue {
 		t.Fatalf("unexpected readiness: %#v", value)

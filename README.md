@@ -73,7 +73,7 @@ same observations: false
 | `Map(...).When(Status(metav1.ConditionFalse))` | Include only matching observations. |
 | `Map(...).Escalate(WaitingForHuman, Reason("InvalidConfiguration"))` | Override escalation for matching **bad** observations. |
 | `Output("Synced", spec).Local()` | Require an explicit local assertion; children cannot set it. |
-| `Output("Ready", spec).Messages(MultilineMessages{})` | Select diagnostic formatting independently of semantics. |
+| `Output("Ready", spec).Format(MultilineMessages{})` | Select diagnostic formatting independently of semantics. |
 
 A source may map to several targets. Duplicate source/target mappings are rejected: put
 reason-specific overrides on one mapping. Overrides are first-match, in declaration order;
@@ -176,7 +176,7 @@ in sync, and no `.Using(rule)` bridge. `Define` derives the published schema fro
 Ordinary loops and functions can assemble a definition or share output values across consumers.
 `Definition.Now` supplies an optional clock.
 
-Use `OutputDefinition.Reduction`, `Parent`, `LocalChecks`, `Format`, and `Generation` for
+Use `OutputDefinition.Reduction`, `Parent`, `LocalChecks`, `Formatter`, and `Generation` for
 custom behavior. `ChildSelectorFunc`, `LocalSelectorFunc`, `ReducerFunc`, and `ClassifierFunc`
 accept ordinary Go snippets wherever defining a separate type would add little value:
 
@@ -201,7 +201,7 @@ A global `Child(schema, Classify())` can admit objects exclusively for custom se
 
 `Derived` and `DerivedConditions` attach additional owned conditions and their published
 contracts to the output that produces them; dependencies remain explicit in `Requires`.
-Nil `Parent`, `Reduction`, and `Format` select the standard behavior. A custom parent policy
+Nil `Parent`, `Reduction`, and `Formatter` select the standard behavior. A custom parent policy
 owns its missing-base convention; supply `DefaultBase` if it should run without a local base.
 `LocalOnly` disables child contributions and, by default, requires a local assertion.
 
@@ -228,9 +228,11 @@ selectors, reducers, derivations, formatters and clock callbacks must be pure/re
 safe to share. Their internal mutable state cannot be deep-cloned by the library.
 `Schema()` returns a separate map/slice copy. Treat published global definitions as immutable.
 
-The earlier low-level API remains available as `Compose`, `Rules`, `Rule`, `Evaluate`, and
-`ApplyRules`. This experimental migration renames the old per-output `Aggregation` to `Rule`
-and the old `(bool, error)` `Aggregate` to `ApplyRules`.
+There is one public configuration path: `Definition` → `Define` → `Aggregation`.
+Compose independent providers by appending their `OutputDefinition` values to `Definition.Outputs`.
+The evaluator and its compiled rules are internal. The former public `Rule`, `Rules`, `Compose`,
+`Evaluate`, and `ApplyRules` APIs have been removed; use `EvaluateAggregation` for pure evaluation.
+Historical configurations live only in tests, with a frozen reference evaluator for conformance.
 
 ## Resource adapters
 
@@ -246,11 +248,25 @@ An aggregation selects its message format through the `Formatter` interface:
 ```go
 type Formatter interface {
     Format(summary string, causes []Cause) string
+}
+```
+
+Set `OutputDefinition.Formatter`, or use `Output(name, spec).Format(formatter)`.
+The reducer produces an `Outcome`; `Formatter.Format(outcome.Summary, outcome.Causes)` produces
+only the message. Status, reason, escalation, generation, and transition time are independent.
+The default is `BoundedMessages{}`. `FormatterFunc` accepts a Go function with this signature.
+
+Short presentation is a separate, optional one-method `InlineFormatter` interface:
+
+```go
+type InlineFormatter interface {
     Inline(condition metav1.Condition) string
 }
 ```
 
-Set `rule.Messages` to a format implementation. Applications can provide another implementation, as the OpenShift operator example does for its native union messages.
+Aggregation never calls `Inline`. The built-in formatters implement both interfaces;
+custom formatters need only `Format`. `InlineFormatterFunc` accepts a presentation function.
+Applications can provide another formatter, as OpenShift does for its native union messages.
 
 | Format | Use when | Behavior |
 | --- | --- | --- |
@@ -273,7 +289,7 @@ The output blocks show Condition message text. Format selection and budgets do n
 
 ```go
 multiline := conditions.MultilineMessages{MaxLines: 7, InlineChars: 40}
-rule.Messages = multiline
+output.Formatter = multiline
 multilineMessage := multiline.Format(summary, causes)
 ```
 
@@ -310,7 +326,7 @@ service unavailable: Worker
 
 ```go
 bounded := conditions.BoundedMessages{MaxLines: 7, InlineChars: 40}
-rule.Messages = bounded
+output.Formatter = bounded
 boundedMessage := bounded.Format(summary, causes)
 ```
 
@@ -347,7 +363,7 @@ See [FORMATS.md](FORMATS.md) for the complete syntax, promotion rules, and input
 
 ## Examples
 
-Each example contains rules, executable calls, and tests. The framework examples also include representation adapters and status YAML.
+Each example contains output definitions, executable calls, and tests. The framework examples also include representation adapters and status YAML.
 
 | Example | What it demonstrates |
 | --- | --- |

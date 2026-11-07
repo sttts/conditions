@@ -12,16 +12,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestExplicitLocalChecks(t *testing.T) {
-	rules, err := c.Compose([]c.Rule{LocalChecks("Custom")})
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestExplicitlegacyLocalChecks(t *testing.T) {
 	parent := referenceParent(t, metav1.Condition{Type: "CustomHealth", Status: metav1.ConditionFalse, Reason: "HealthFailed", Message: "broken"})
-	_, err = c.ApplyRules(parent, nil, rules, metav1.Condition{Type: "Custom", Status: metav1.ConditionTrue, Reason: "Passed"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	aggregation := c.Define(c.Definition{Outputs: []c.OutputDefinition{LocalChecks("Custom")}})
+	c.Aggregate(parent, nil, aggregation, metav1.Condition{Type: "Custom", Status: metav1.ConditionTrue, Reason: "Passed"})
 	value, _ := c.Lookup(parent, "Custom")
 	if value.Status != metav1.ConditionFalse || value.Reason != "HealthFailed" {
 		t.Fatalf("lost local prefix semantics: %#v", value)
@@ -41,10 +35,10 @@ func TestInfraCompositionIsOrderIndependent(t *testing.T) {
 			slices.Reverse(reversed.Outputs)
 			local := slices.Clone(f.Bases)
 			slices.Reverse(local)
-			if _, err := ApplyRules(a, children, rules, f.Bases...); err != nil {
+			if _, err := applyDefined(t, a, children, rules, f.Bases...); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := ApplyRules(b, children, reversed, local...); err != nil {
+			if _, err := applyDefined(t, b, children, reversed, local...); err != nil {
 				t.Fatal(err)
 			}
 			if !reflect.DeepEqual(a.GetConditions(), b.GetConditions()) {

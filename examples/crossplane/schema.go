@@ -21,16 +21,15 @@ var NativeSchema = c.Schema{Conditions: map[string]c.Spec{
 var Aggregation = defineAggregation()
 var Schema = Aggregation.Schema()
 
+var ReadyOutput = c.OutputDefinition{
+	Name: "Ready", Spec: NativeSchema.Conditions["Ready"],
+	DefaultBase: &metav1.Condition{Status: metav1.ConditionTrue, Reason: "Available"},
+	Reduction:   Readiness{}, Formatter: c.BoundedMessages{MaxLines: 7},
+}
+
 func defineAggregation(clocks ...func() time.Time) *c.Aggregation {
 	d := c.Definition{
-		Outputs: []c.OutputDefinition{
-			{
-				Name: "Ready", Spec: NativeSchema.Conditions["Ready"],
-				DefaultBase: &metav1.Condition{Status: metav1.ConditionTrue, Reason: "Available"},
-				Reduction:   Readiness{}, Format: c.BoundedMessages{MaxLines: 7},
-			},
-			c.Output("Synced", NativeSchema.Conditions["Synced"]).Local(),
-		},
+		Outputs:  []c.OutputDefinition{ReadyOutput, c.Output("Synced", NativeSchema.Conditions["Synced"]).Local()},
 		Children: []c.ChildBinding{c.Child(NativeSchema, c.Identity)},
 	}
 	if len(clocks) > 0 {

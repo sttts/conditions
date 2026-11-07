@@ -6,6 +6,7 @@ package crossplane
 import (
 	"errors"
 	"fmt"
+	ref "github.com/sttts/conditions/internal/testreference"
 	"reflect"
 	"strings"
 	"testing"
@@ -25,7 +26,7 @@ func resource(values ...xpv1.Condition) Adapter {
 	return Adapter{result}
 }
 
-func fixedRules() c.Rules {
+func fixedRules() ref.Rules {
 	rules := CrossplaneRules
 	rules.Now = func() time.Time { return epoch }
 	return rules

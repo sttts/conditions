@@ -6,6 +6,7 @@ package infra
 import (
 	"encoding/json"
 	"fmt"
+	c "github.com/sttts/conditions"
 	"os"
 	"reflect"
 	"sort"
@@ -243,7 +244,7 @@ func TestInfraCallerCorpus(t *testing.T) {
 
 func TestInfraPresentationCorpus(t *testing.T) {
 	_, fixtures := loadFixtures(t)
-	var presenter Presenter = InfraSummary{Inputs: InfraConditions, Classifier: InfraClassification, Messages: infraMessages}
+	var presenter Presenter = InfraSummary{Inputs: InfraConditions, Classifier: InfraClassification, Formatter: infraMessages}
 	for _, f := range fixtures {
 		t.Run(f.Name, func(t *testing.T) {
 			phase, message := presenter.Present(fixtureResource(f.ParentMetadata, f.Conditions))
@@ -298,20 +299,18 @@ func Example_infra() {
 	available := metav1.Condition{Type: "Available", Status: metav1.ConditionTrue, Reason: "Available"}
 	nonDegraded := metav1.Condition{Type: "NonDegraded", Status: metav1.ConditionTrue, Reason: "NonDegraded"}
 	upToDate := metav1.Condition{Type: "UpToDate", Status: metav1.ConditionTrue, Reason: "UpToDate"}
-	rules := InfraRules
-	rules.Now = func() time.Time { return time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC) }
-
-	// The call shape mirrors Infra; only the caller persists the changed object's status.
-	changed, err := ApplyRules(parent, map[string]Object{"Worker": worker}, rules, synced, available, nonDegraded, upToDate)
-	if err != nil {
-		panic(err)
-	}
+	aggregation := c.Define(c.Definition{
+		Outputs:  []c.OutputDefinition{AvailabilityOutput, NonDegradedOutput, UpToDateOutput, SyncedOutput, DeletingOutput},
+		Children: []c.ChildBinding{c.Child(InputSchema, c.Identity)},
+		Now:      func() time.Time { return time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC) },
+	})
+	changed := c.Aggregate(parent, map[string]Object{"Worker": worker}, aggregation, synced, available, nonDegraded, upToDate)
 	fmt.Println("changed:", changed)
 	for _, typ := range []string{"Available", "Initialized", "NonDegraded", "UpToDate", "Synced"} {
 		condition, _ := Lookup(parent, typ)
 		fmt.Printf("%s=%s, %s\n", typ, condition.Status, condition.Reason)
 	}
-	var presentation Presenter = InfraSummary{Inputs: InfraConditions, Classifier: InfraClassification, Messages: infraMessages}
+	var presentation Presenter = InfraSummary{Inputs: InfraConditions, Classifier: InfraClassification, Formatter: infraMessages}
 	phase, _ := presentation.Present(parent)
 	fmt.Println("phase:", phase)
 
@@ -322,9 +321,7 @@ func Example_infra() {
 		metav1.Condition{Type: "Synced", Status: metav1.ConditionTrue, Reason: "Synced"},
 		metav1.Condition{Type: "UpToDate", Status: metav1.ConditionTrue, Reason: "UpToDate"},
 	)
-	if _, err := ApplyRules(parent, map[string]Object{"Worker": worker}, rules, synced, available, nonDegraded, upToDate); err != nil {
-		panic(err)
-	}
+	c.Aggregate(parent, map[string]Object{"Worker": worker}, aggregation, synced, available, nonDegraded, upToDate)
 	phase, _ = presentation.Present(parent)
 	fmt.Println("recovered:", phase)
 
@@ -349,7 +346,7 @@ func TestCompatibleCompositionAndRecovery(t *testing.T) {
 		Children: ServingChildren{Inputs: InfraConditions, Condition: InfraConditions.Available,
 			Classifier: ReasonClassifier{Reasons: map[string]Escalation{"DependencyFailed": Failed}}, False: Always{}, Failure: Always{}},
 		Reduction: ParentChildReduction{Output: ready, BadSuffix: "NotReady"},
-		Messages:  BoundedMessages{MaxLines: 7},
+		Formatter: BoundedMessages{MaxLines: 7},
 	}
 	second := Rule{
 		Output: ready,
@@ -357,7 +354,7 @@ func TestCompatibleCompositionAndRecovery(t *testing.T) {
 		Children: ServingChildren{Inputs: InfraConditions, Condition: ready,
 			Classifier: ReasonClassifier{Reasons: map[string]Escalation{"ChildrenFailed": Failed}}, False: Always{}, Failure: Always{}},
 		Reduction: ParentChildReduction{Output: ready, BadSuffix: "NotReady"},
-		Messages:  BoundedMessages{MaxLines: 1},
+		Formatter: BoundedMessages{MaxLines: 1},
 	}
 	rulesA := Rules{Outputs: []Rule{first}, Now: fixtureNow}
 	rulesB := Rules{Outputs: []Rule{second}, Now: fixtureNow}
@@ -443,7 +440,7 @@ func TestGenericAggregateUsesOnlySuppliedRules(t *testing.T) {
 				Classifier: ReasonClassifier{Reasons: map[string]Escalation{"DependencyFailed": Failed}},
 				False:      Always{}, Failure: Always{}},
 			Reduction: ParentChildReduction{Output: output, BadSuffix: "Unavailable"},
-			Messages:  BoundedMessages{MaxLines: 1},
+			Formatter: BoundedMessages{MaxLines: 1},
 		}},
 		Now: fixtureNow,
 	}

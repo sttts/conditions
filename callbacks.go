@@ -26,3 +26,13 @@ type ReducerFunc func(base metav1.Condition, children map[string]Object, local, 
 func (f ReducerFunc) Reduce(base metav1.Condition, children map[string]Object, local, selected []Contribution) Outcome {
 	return f(base, children, local, selected)
 }
+
+// FormatterFunc renders messages with an ordinary Go function.
+type FormatterFunc func(summary string, causes []Cause) string
+
+func (f FormatterFunc) Format(summary string, causes []Cause) string { return f(summary, causes) }
+
+// InlineFormatterFunc supplies a short presentation independently of aggregation.
+type InlineFormatterFunc func(metav1.Condition) string
+
+func (f InlineFormatterFunc) Inline(condition metav1.Condition) string { return f(condition) }

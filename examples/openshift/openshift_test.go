@@ -5,6 +5,7 @@ package openshift
 
 import (
 	"fmt"
+	ref "github.com/sttts/conditions/internal/testreference"
 	"reflect"
 	"testing"
 	"time"
@@ -60,7 +61,7 @@ func TestUnion(t *testing.T) {
 					operator := source(test.values...)
 					before := append([]operatorv1.OperatorCondition(nil), operator.Status.Conditions...)
 					selected := (OperatorConditions{typ}).Select(nil, operator)
-					rules := c.Rules{Outputs: []c.Rule{UnionRule(typ)}, Now: func() time.Time { return epoch }}
+					rules := ref.Rules{Outputs: []ref.Rule{UnionRule(typ)}, Now: func() time.Time { return epoch }}
 					if _, err := applyDefined(t, ClusterOperator{&configv1.ClusterOperator{}}, map[string]c.Object{"operator": operator}, rules); err != nil {
 						t.Fatal(err)
 					}

@@ -18,13 +18,13 @@ func TestHelpersAndPlainGoHaveSameBehavior(t *testing.T) {
 	clock := func() time.Time { return time.Unix(123, 0) }
 	helpers := c.Define(c.Definition{
 		Now:      clock,
-		Outputs:  []c.OutputDefinition{c.Output("Ready", c.Spec{Polarity: c.TrueIsGood}).Messages(c.BoundedMessages{}), c.Output("Synced", c.Spec{}).Local()},
+		Outputs:  []c.OutputDefinition{c.Output("Ready", c.Spec{Polarity: c.TrueIsGood}).Format(c.BoundedMessages{}), c.Output("Synced", c.Spec{}).Local()},
 		Children: []c.ChildBinding{c.Child(input, c.Classify(c.Map("Available", "Ready").When(c.Status(metav1.ConditionTrue)).Escalate(c.Failed, c.Reason("Broken")))).For(c.G("db.io"))},
 	})
 	plain := c.Define(c.Definition{
 		Now: clock,
 		Outputs: []c.OutputDefinition{
-			{Name: "Ready", Spec: c.Spec{Polarity: c.TrueIsGood}, Format: c.BoundedMessages{}},
+			{Name: "Ready", Spec: c.Spec{Polarity: c.TrueIsGood}, Formatter: c.BoundedMessages{}},
 			{Name: "Synced", Spec: c.Spec{}, LocalOnly: true},
 		},
 		Children: []c.ChildBinding{{
@@ -132,5 +132,57 @@ func TestPublicConfigurationValidation(t *testing.T) {
 		{"bad literal escalation", "invalid escalation", c.Definition{Outputs: []c.OutputDefinition{output}, Children: []c.ChildBinding{c.Child(contract("Ready", c.TrueIsGood), c.Classify(c.Mapping{Source: "Ready", Target: "Ready", Overrides: []c.EscalationOverride{{Level: 99}}}))}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) { assertPanic(t, tc.want, func() { c.Define(tc.def) }) })
+	}
+}
+
+func TestFormatterDoesNotRequireInlineOrChangeSemantics(t *testing.T) {
+	calls := 0
+	format := c.FormatterFunc(func(summary string, causes []c.Cause) string {
+		calls++
+		if len(causes) != 1 || causes[0].Reference != "database" {
+			t.Fatalf("lost provenance: %#v", causes)
+		}
+		return summary + " / " + causes[0].Message
+	})
+	output := c.Output("Ready", c.Spec{}).Format(format)
+	// The helper and the public field install the same one-method interface.
+	var _ c.Formatter = output.Formatter
+	d := c.Definition{
+		Outputs:  []c.OutputDefinition{output},
+		Children: []c.ChildBinding{c.Child(contract("Ready", c.TrueIsGood), c.Identity)},
+		Now:      func() time.Time { return time.Unix(123, 0) },
+	}
+	custom, standard := &object{}, &object{}
+	children := map[string]c.Object{"database": observation("Ready", metav1.ConditionFalse, "Starting")}
+	c.Aggregate(custom, children, c.Define(d))
+	d.Outputs[0].Formatter = c.BoundedMessages{}
+	c.Aggregate(standard, children, c.Define(d))
+	got, _ := c.Lookup(custom, "Ready")
+	want, _ := c.Lookup(standard, "Ready")
+	if calls != 1 || got.Message != "Conditions are not satisfied / Starting" {
+		t.Fatalf("formatter not applied: %#v", got)
+	}
+	got.Message = want.Message
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("formatting changed semantics or metadata: %#v / %#v", got, want)
+	}
+	var inline c.InlineFormatter = c.InlineFormatterFunc(func(value metav1.Condition) string { return value.Reason })
+	if inline.Inline(want) != want.Reason {
+		t.Fatal("independent inline presentation failed")
+	}
+}
+
+func TestOutputCompositionValidation(t *testing.T) {
+	good := c.Output("Ready", c.Spec{})
+	for _, tc := range []struct {
+		name, want string
+		outputs    []c.OutputDefinition
+	}{
+		{"duplicate", "duplicate output", []c.OutputDefinition{good, good}},
+		{"missing dependency", "requires missing output", []c.OutputDefinition{{Name: "Observed", Requires: []string{"Ready"}}}},
+		{"self cycle", "dependency cycle", []c.OutputDefinition{{Name: "Ready", Requires: []string{"Ready"}}}},
+		{"mutual cycle", "dependency cycle", []c.OutputDefinition{{Name: "Ready", Requires: []string{"Observed"}}, {Name: "Observed", Requires: []string{"Ready"}}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) { assertPanic(t, tc.want, func() { c.Define(c.Definition{Outputs: tc.outputs}) }) })
 	}
 }

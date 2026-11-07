@@ -9,9 +9,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Rules explicitly requires Ready from any selected provider, not a concrete package.
-func Rules() []c.Rule {
-	return []c.Rule{{Output: c.ConditionType{Type: "Observed"}, Requires: []string{"Ready"}, DefaultBase: &metav1.Condition{Type: "Observed"}, Parent: c.ChildrenOnly{}, Local: ready{}, Reduction: observation{}, Messages: c.BoundedMessages{}}}
+// Outputs depends on Ready from whichever provider the consumer selects.
+func Outputs() []c.OutputDefinition {
+	return []c.OutputDefinition{{Name: "Observed", Requires: []string{"Ready"}, DefaultBase: &metav1.Condition{Type: "Observed"}, Parent: c.ChildrenOnly{}, LocalChecks: ready{}, Reduction: observation{}, Formatter: c.BoundedMessages{}}}
 }
 
 type ready struct{}

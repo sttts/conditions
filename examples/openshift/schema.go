@@ -25,7 +25,7 @@ func unionOutput(name string, spec c.Spec) c.OutputDefinition {
 		Name: name, Spec: spec,
 		DefaultBase: &metav1.Condition{}, Parent: c.ChildrenOnly{},
 		Reduction: OperatorUnion{Condition: c.ConditionType{Type: name, Polarity: spec.Polarity}},
-		Format:    UnionMessages{}, Generation: c.NoObservedGeneration,
+		Formatter: UnionMessages{}, Generation: c.NoObservedGeneration,
 	}
 }
 

@@ -44,7 +44,7 @@ func TestUndeclaredDerivationWriteIsAtomic(t *testing.T) {
 	producer := rule(c.Outcome{State: c.State{Assessment: c.Good}, Reason: "Ready"})
 	producer.Derived = []c.Derivation{dishonestDerivation{}}
 	parent := &object{}
-	if _, err := c.ApplyRules(parent, nil, c.Rules{Outputs: []c.Rule{producer}}); err == nil || parent.sets != 0 {
+	if _, err := c.EngineApplyRules(parent, nil, c.TestRules{Outputs: []c.TestRule{producer}}); err == nil || parent.sets != 0 {
 		t.Fatalf("undeclared derivation write was not rejected atomically: err=%v sets=%d", err, parent.sets)
 	}
 }
@@ -63,7 +63,7 @@ func TestSiblingDerivationsAreIndependent(t *testing.T) {
 		producer := rule(c.Outcome{State: c.State{Assessment: c.Good}, Reason: "Ready"})
 		producer.Derived = derived
 		parent := &object{}
-		if _, err := c.ApplyRules(parent, nil, c.Rules{Outputs: []c.Rule{producer}}); err != nil {
+		if _, err := c.EngineApplyRules(parent, nil, c.TestRules{Outputs: []c.TestRule{producer}}); err != nil {
 			t.Fatal(err)
 		}
 		value, _ := c.Lookup(parent, "B")
@@ -80,13 +80,13 @@ func TestDerivedOwnershipAndDependencies(t *testing.T) {
 	consumer.Output.Type = "Observed"
 	consumer.DefaultBase = &metav1.Condition{Type: "Observed"}
 	consumer.Requires = []string{"Initialized"}
-	rules, err := c.Compose([]c.Rule{consumer, producer})
+	rules, err := c.EngineCompose([]c.TestRule{consumer, producer})
 	if err != nil {
 		t.Fatal(err)
 	}
 	parent := &object{}
 	// Derived ownership ignores conflicting caller assertions, instead of a global IgnoreLocal list.
-	if _, err := c.ApplyRules(parent, nil, rules, metav1.Condition{Type: "Initialized", Status: metav1.ConditionFalse, Reason: "Caller"}); err != nil {
+	if _, err := c.EngineApplyRules(parent, nil, rules, metav1.Condition{Type: "Initialized", Status: metav1.ConditionFalse, Reason: "Caller"}); err != nil {
 		t.Fatal(err)
 	}
 	value, _ := c.Lookup(parent, "Initialized")
@@ -97,22 +97,22 @@ func TestDerivedOwnershipAndDependencies(t *testing.T) {
 	duplicate.Output.Type = "Initialized"
 	duplicate.DefaultBase = &metav1.Condition{Type: "Initialized"}
 	duplicate.Derived = nil
-	if _, err := c.Compose([]c.Rule{producer, duplicate}); err == nil {
+	if _, err := c.EngineCompose([]c.TestRule{producer, duplicate}); err == nil {
 		t.Fatal("accepted competing derived owner")
 	}
 }
 
 func TestDeclaredDependencyUsesCurrentResult(t *testing.T) {
 	producer := rule(c.Outcome{State: c.State{Assessment: c.Good}, Reason: "Ready"})
-	consumer := c.Rule{Output: c.ConditionType{Type: "Observed"}, DefaultBase: &metav1.Condition{Type: "Observed"}, Parent: c.ChildrenOnly{}, Local: selectReady{}, Reduction: readReady{}, Messages: c.BoundedMessages{}}
+	consumer := c.TestRule{Output: c.ConditionType{Type: "Observed"}, DefaultBase: &metav1.Condition{Type: "Observed"}, Parent: c.ChildrenOnly{}, Local: selectReady{}, Reduction: readReady{}, Formatter: c.BoundedMessages{}}
 	consumer.Requires = []string{"Ready"}
-	for _, outputs := range [][]c.Rule{{producer, consumer}, {consumer, producer}} {
-		rules, err := c.Compose(outputs)
+	for _, outputs := range [][]c.TestRule{{producer, consumer}, {consumer, producer}} {
+		rules, err := c.EngineCompose(outputs)
 		if err != nil {
 			t.Fatal(err)
 		}
 		parent := &object{conditions: []metav1.Condition{{Type: "Ready", Status: metav1.ConditionFalse, Reason: "Previous"}}}
-		if _, err := c.ApplyRules(parent, nil, rules); err != nil {
+		if _, err := c.EngineApplyRules(parent, nil, rules); err != nil {
 			t.Fatal(err)
 		}
 		got, _ := c.Lookup(parent, "Observed")
@@ -126,11 +126,11 @@ func TestUnownedLocalOrderDoesNotMatter(t *testing.T) {
 	a, b := &object{}, &object{}
 	first := metav1.Condition{Type: "A", Status: metav1.ConditionTrue, Reason: "A"}
 	last := metav1.Condition{Type: "Z", Status: metav1.ConditionFalse, Reason: "Z"}
-	rules := c.Rules{Now: func() time.Time { return time.Unix(100, 0) }}
-	if _, err := c.ApplyRules(a, nil, rules, first, last); err != nil {
+	rules := c.TestRules{Now: func() time.Time { return time.Unix(100, 0) }}
+	if _, err := c.EngineApplyRules(a, nil, rules, first, last); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.ApplyRules(b, nil, rules, last, first); err != nil {
+	if _, err := c.EngineApplyRules(b, nil, rules, last, first); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(a.GetConditions(), b.GetConditions()) {
@@ -144,7 +144,7 @@ func TestDuplicateLocalAssertionsAreAtomic(t *testing.T) {
 	b := a
 	b.Status = metav1.ConditionFalse
 	b.Reason = "Error"
-	if _, err := c.ApplyRules(parent, nil, c.Rules{}, a, b); err == nil || parent.sets != 0 {
+	if _, err := c.EngineApplyRules(parent, nil, c.TestRules{}, a, b); err == nil || parent.sets != 0 {
 		t.Fatalf("duplicate local assertions accepted: err=%v sets=%d", err, parent.sets)
 	}
 }
@@ -153,17 +153,17 @@ func TestTypedNilPolicyIsRejected(t *testing.T) {
 	producer := rule(c.Outcome{State: c.State{Assessment: c.Good}, Reason: "Ready"})
 	var reducer *fixedOutcome
 	producer.Reduction = reducer
-	if _, err := c.Compose([]c.Rule{producer}); err == nil {
+	if _, err := c.EngineCompose([]c.TestRule{producer}); err == nil {
 		t.Fatal("typed nil policy accepted as complete")
 	}
 }
 
 func TestIndependentRulesReadSameSnapshot(t *testing.T) {
 	producer := rule(c.Outcome{State: c.State{Assessment: c.Good}, Reason: "Ready"})
-	consumer := c.Rule{Output: c.ConditionType{Type: "Observed"}, DefaultBase: &metav1.Condition{Type: "Observed"}, Parent: c.ChildrenOnly{}, Local: selectReady{}, Reduction: readReady{}, Messages: c.BoundedMessages{}}
-	for _, outputs := range [][]c.Rule{{producer, consumer}, {consumer, producer}} {
+	consumer := c.TestRule{Output: c.ConditionType{Type: "Observed"}, DefaultBase: &metav1.Condition{Type: "Observed"}, Parent: c.ChildrenOnly{}, Local: selectReady{}, Reduction: readReady{}, Formatter: c.BoundedMessages{}}
+	for _, outputs := range [][]c.TestRule{{producer, consumer}, {consumer, producer}} {
 		parent := &object{conditions: []metav1.Condition{{Type: "Ready", Status: metav1.ConditionFalse, Reason: "Previous"}}}
-		if _, err := c.ApplyRules(parent, nil, c.Rules{Outputs: outputs}); err != nil {
+		if _, err := c.EngineApplyRules(parent, nil, c.TestRules{Outputs: outputs}); err != nil {
 			t.Fatal(err)
 		}
 		got, _ := c.Lookup(parent, "Observed")

@@ -34,7 +34,7 @@ var AvailabilityOutput = c.OutputDefinition{
 		SyncError: beforeInitialization, JobRunning: beforeInitialization, JobFailed: beforeInitialization,
 		BadDescription: "is not available"},
 	Reduction: ParentChildReduction{Inputs: InfraConditions, Output: InfraConditions.Available, Classifier: InfraClassification, BadSuffix: "NotAvailable", BadDescription: "unavailable children"},
-	Format:    infraMessages, Generation: PreserveBaseGeneration,
+	Formatter: infraMessages, Generation: PreserveBaseGeneration,
 }
 var NonDegradedOutput = c.OutputDefinition{
 	Name: "NonDegraded", Spec: InputSchema.Conditions["NonDegraded"], Requires: []string{"Available", "Initialized"},
@@ -43,7 +43,7 @@ var NonDegradedOutput = c.OutputDefinition{
 	Children: ServingChildren{Inputs: InfraConditions, Condition: InfraConditions.NonDegraded, Classifier: InfraClassification,
 		False: Always{}, Failure: Always{}, Human: Never{}, SyncError: Always{}, Unavailable: Always{}, JobFailed: Always{}, BadDescription: "is degraded"},
 	Reduction: ParentChildReduction{Inputs: InfraConditions, Output: InfraConditions.NonDegraded, Classifier: InfraClassification, BadSuffix: "Degraded", BadDescription: "degraded children"},
-	Format:    infraMessages, Generation: PreserveBaseGeneration,
+	Formatter: infraMessages, Generation: PreserveBaseGeneration,
 }
 var UpToDateOutput = c.OutputDefinition{
 	Name: "UpToDate", Spec: InputSchema.Conditions["UpToDate"], Requires: []string{"Initialized"},
@@ -52,14 +52,14 @@ var UpToDateOutput = c.OutputDefinition{
 	Children: ServingChildren{Inputs: InfraConditions, Condition: InfraConditions.UpToDate, Classifier: InfraClassification,
 		False: Always{}, Failure: Never{}, Human: Always{}, SyncError: Always{}, Uninitialized: Always{}, JobRunning: Always{}, JobFailed: Always{}, BadDescription: "is updating"},
 	Reduction: ParentChildReduction{Inputs: InfraConditions, Output: InfraConditions.UpToDate, Classifier: InfraClassification, BadSuffix: "Updating", BadDescription: "updating children"},
-	Format:    infraMessages, Generation: PreserveBaseGeneration,
+	Formatter: infraMessages, Generation: PreserveBaseGeneration,
 }
 var SyncedOutput = c.OutputDefinition{
 	Name: "Synced", Spec: InputSchema.Conditions["Synced"], LocalOnly: true,
 	Parent:      LocalOnly{LocalBaseFirst: LocalBaseFirst{Base: InfraConditions.Synced, Classifier: InfraClassification}},
 	LocalChecks: PrefixedChecks{Prefix: "Synced", Polarity: TrueIsGood, Classifier: InfraClassification},
 	Reduction:   ParentChildReduction{Inputs: InfraConditions, Output: InfraConditions.Synced, Classifier: InfraClassification, LocalOnly: true},
-	Format:      infraMessages, Generation: PreserveBaseGeneration,
+	Formatter:   infraMessages, Generation: PreserveBaseGeneration,
 }
 var DeletingOutput = c.OutputDefinition{
 	Name: "Deleting", Spec: InputSchema.Conditions["Deleting"],
@@ -67,7 +67,7 @@ var DeletingOutput = c.OutputDefinition{
 	Parent:      DeletionBase{Classifier: InfraClassification, Output: InfraConditions.Deleting},
 	Children:    DeletingChildren{Inputs: InfraConditions, Classifier: InfraClassification},
 	Reduction:   DeletionReduction{Inputs: InfraConditions, Classifier: InfraClassification},
-	Format:      infraMessages, Generation: PreserveBaseGeneration,
+	Formatter:   infraMessages, Generation: PreserveBaseGeneration,
 }
 
 var Aggregation = c.Define(c.Definition{
@@ -75,3 +75,15 @@ var Aggregation = c.Define(c.Definition{
 	Children: []c.ChildBinding{c.Child(InputSchema, c.Identity)},
 })
 var Schema = Aggregation.Schema()
+
+// LocalChecks declares one local output with Infra's prefix-check semantics.
+func LocalChecks(name string) c.OutputDefinition {
+	typ := ConditionType{Type: name, Polarity: TrueIsGood}
+	return c.OutputDefinition{
+		Name: name, Spec: c.Spec{Polarity: TrueIsGood, Reasons: InfraClassification}, LocalOnly: true,
+		Parent:      LocalOnly{LocalBaseFirst: LocalBaseFirst{Base: typ, Classifier: InfraClassification}},
+		LocalChecks: PrefixedChecks{Prefix: name, Polarity: TrueIsGood, Classifier: InfraClassification},
+		Reduction:   ParentChildReduction{Output: typ, Classifier: InfraClassification, LocalOnly: true},
+		Formatter:   infraMessages, Generation: PreserveBaseGeneration,
+	}
+}

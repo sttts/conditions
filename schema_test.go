@@ -246,7 +246,6 @@ func TestFilteringAndConditionalParticipation(t *testing.T) {
 	c.AggregateSlice(p, []c.Object{
 		scopeObject("other.io", "v1", "Database", observation("Available", metav1.ConditionFalse, "Ignored")),
 		scopeObject("db.io", "v1", "Database", observation("Available", metav1.ConditionTrue, "Filtered")),
-		observation("Available", metav1.ConditionFalse, "MissingTypeMeta"),
 	}, a)
 	if v, _ := c.Lookup(p, "Ready"); v.Status != metav1.ConditionUnknown {
 		t.Fatal(v)

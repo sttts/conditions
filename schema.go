@@ -154,12 +154,3 @@ func (k fixedKind) GroupVersionKind() schema.GroupVersionKind { return k.gvk }
 func (fixedKind) SetGroupVersionKind(schema.GroupVersionKind) {
 	panic("conditions: WithGVK is read-only")
 }
-func objectGVK(object Object) schema.GroupVersionKind {
-	typed, ok := object.(interface{ GetObjectKind() schema.ObjectKind })
-	if !ok {
-		return schema.GroupVersionKind{}
-	}
-	gvk := typed.GetObjectKind().GroupVersionKind()
-
-	return gvk
-}

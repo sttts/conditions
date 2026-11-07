@@ -191,7 +191,10 @@ func TestSetterReportsNativeChanges(t *testing.T) {
 }
 
 // componentObject deliberately resembles an operand but is not native operator status.
-type componentObject struct{ metav1.ObjectMeta }
+type componentObject struct {
+	metav1.TypeMeta
+	metav1.ObjectMeta
+}
 
 func (componentObject) GetConditions() []metav1.Condition {
 	return []metav1.Condition{{Type: "Available", Status: metav1.ConditionFalse}}
@@ -199,7 +202,7 @@ func (componentObject) GetConditions() []metav1.Condition {
 
 func TestOperandConditionsDoNotDriveOperatorStatus(t *testing.T) {
 	parent := ClusterOperator{&configv1.ClusterOperator{}}
-	_, err := applyDefined(t, parent, map[string]c.Object{"operand": &componentObject{}}, OpenShiftRules)
+	_, err := applyDefined(t, parent, map[string]c.Object{"operand": &componentObject{TypeMeta: metav1.TypeMeta{APIVersion: "apps/v1", Kind: "Deployment"}}}, OpenShiftRules)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -20,7 +20,10 @@ A `Schema` declares condition names, polarities, reason classifiers and optional
 families. API scopes are GVK/GV/G/GK, or global when unspecified. Consumer bindings may narrow
 them with `For`; narrower matching bindings replace broader fallbacks. Equal/incomparable
 intersecting bindings are construction errors. Unmatched children do not participate. No
-runtime Scheme or global registry is introduced.
+global registry is introduced. `Definition.Scheme` optionally resolves Go types with empty
+TypeMeta; `Types(scheme)` constructs G/GV/GK/GVK scopes from `runtime.Object`. Explicit GVK
+takes precedence. Projection must be unambiguous, and runtime candidates must all select
+the same binding. Resolution errors precede mutation. No GVR or RESTMapper is involved.
 
 `Classify(Map(...))` translates provider vocabulary to consumer outputs.
 `Identity` explicitly asserts same-name semantic equivalence within a shared vocabulary.

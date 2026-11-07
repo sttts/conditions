@@ -120,11 +120,41 @@ conditions.Child(project.Schema, conditions.Identity).
 fallback mappings are not merged. Equal or incomparable overlapping bindings (for example
 GV and GK) are rejected at definition time. Children outside all bindings are filtered out.
 
-Scoped matching reads the object's `GetObjectKind().GroupVersionKind()`. Typed objects often
-have empty TypeMeta after client reads; supply their known GVK with
-`conditions.WithGVK(child, gvk)` when necessary. This wrapper retains the original conditions
-and metadata; it performs no scheme lookup. Only a global binding accepts objects without
-complete GVK. Map keys never influence schema selection.
+Scoped matching reads the object's GVK when set. For typed objects with empty TypeMeta,
+provide a Kubernetes scheme. The same scheme can construct scopes from object types:
+
+```go
+types := conditions.Types(scheme) // scheme registration is already complete
+
+var Aggregation = conditions.Define(conditions.Definition{
+    Scheme: scheme,
+    Outputs: []conditions.OutputDefinition{
+        conditions.Output("Ready", conditions.Spec{Polarity: conditions.TrueIsGood}),
+    },
+    Children: []conditions.ChildBinding{
+        conditions.Child(database.Schema, conditions.Classify(
+            conditions.Map("Available", "Ready"),
+        )).For(types.GK(&databasev1.Database{})),
+    },
+})
+```
+
+`types.G`, `types.GV`, `types.GK`, and `types.GVK` take `runtime.Object` and return the same
+`ResourceMatch` values as the string helpers. `Types(nil)` works for objects with a populated
+GVK, including unstructured objects. `ObjectTypes{Scheme: scheme}` is the equivalent Go literal.
+There is no GVR, RESTMapper, discovery, or generic resolver API.
+
+A populated GVK takes precedence; an incomplete one is an error. Otherwise the scheme supplies
+the registered GVKs. Helpers check ambiguity **after projection**: several versions of one
+GroupKind are valid for `GK`, but ambiguous for `GVK`. Helpers panic on configuration errors.
+During aggregation, every candidate GVK must select the same binding (or all be unmatched).
+`EvaluateAggregation` returns resolution errors; `Aggregate` panics before the setter runs.
+Missing identity is never silently treated as a scope mismatch.
+
+Finish scheme registration before use and do not mutate it concurrently with evaluations.
+Neither helpers nor aggregation modify object TypeMeta. For adapters that are not
+`runtime.Object`, use `conditions.WithGVK(child, gvk)`. Global-only definitions require no
+API identity or scheme. Map keys never influence schema selection.
 
 ## Domain-specific aggregation
 

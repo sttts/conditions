@@ -6,6 +6,8 @@ package conditions
 import (
 	"fmt"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"strconv"
 	"time"
 )
@@ -14,6 +16,9 @@ import (
 // loops, functions and struct literals can be freely mixed with them.
 // Empty Resources publishes a global schema.
 type Definition struct {
+	// Scheme resolves typed children with empty TypeMeta. Register types before Define;
+	// do not mutate the scheme while aggregations use it. Explicit object GVK wins.
+	Scheme    *runtime.Scheme
 	Resources []ResourceMatch
 	Outputs   []OutputDefinition
 	Children  []ChildBinding
@@ -64,6 +69,7 @@ func (o OutputDefinition) Messages(formatter Formatter) OutputDefinition {
 // Aggregation is a compiled definition and its published output contract.
 // Construct it once, usually in a package variable, and share it across reconciles.
 type Aggregation struct {
+	scheme   *runtime.Scheme
 	schema   Schema
 	rules    Rules
 	children []compiledChild
@@ -122,7 +128,7 @@ func Define(d Definition) *Aggregation {
 	}
 	s = cloneSchema(s)
 	validateSchema(s)
-	a := &Aggregation{schema: s, rules: Rules{Now: d.Now}}
+	a := &Aggregation{scheme: d.Scheme, schema: s, rules: Rules{Now: d.Now}}
 	for _, binding := range d.Children {
 		a.children = append(a.children, compileChild(binding, s))
 	}
@@ -188,8 +194,40 @@ func Define(d Definition) *Aggregation {
 	return a
 }
 
-func (a *Aggregation) child(object Object) *compiledChild {
-	gvk := objectGVK(object)
+func (a *Aggregation) child(object Object) (*compiledChild, error) {
+	// Global-only definitions need no API identity (including non-runtime adapters).
+	scoped := false
+	for _, binding := range a.children {
+		for _, scope := range binding.schema.Resources {
+			scoped = scoped || scope.GroupSet
+		}
+	}
+	if !scoped {
+		if len(a.children) == 0 {
+			return nil, nil
+		}
+		return &a.children[0], nil
+	}
+	typed, ok := object.(interface{ GetObjectKind() schema.ObjectKind })
+	if !ok {
+		return nil, fmt.Errorf("missing API identity for %T; supply WithGVK", object)
+	}
+	kinds, err := resolveKinds(typed, a.scheme)
+	if err != nil {
+		return nil, err
+	}
+	// Several registered GVKs are harmless only if all select the same binding.
+	// Never choose a preferred version or silently drop an unresolved child.
+	result := a.childKind(kinds[0])
+	for _, kind := range kinds[1:] {
+		if a.childKind(kind) != result {
+			return nil, fmt.Errorf("ambiguous child identity for %T: %v", object, kinds)
+		}
+	}
+	return result, nil
+}
+
+func (a *Aggregation) childKind(gvk schema.GroupVersionKind) *compiledChild {
 	var best *compiledChild
 	var scope ResourceMatch
 	for i := range a.children {
@@ -200,7 +238,6 @@ func (a *Aggregation) child(object Object) *compiledChild {
 			}
 		}
 	}
-
 	return best
 }
 
@@ -210,7 +247,10 @@ type classifiedSelector struct {
 }
 
 func (s classifiedSelector) Select(parent, child Object) []Contribution {
-	binding := s.aggregation.child(child)
+	binding, err := s.aggregation.child(child)
+	if err != nil {
+		panic("conditions: " + err.Error())
+	}
 	if binding == nil {
 		return nil
 	}
@@ -219,8 +259,8 @@ func (s classifiedSelector) Select(parent, child Object) []Contribution {
 
 // EvaluateAggregation computes the complete desired condition slice without mutation.
 // Caller errors from the low-level evaluator are returned. Children outside all
-// bindings are filtered out. Scoped schemas require TypeMeta or WithGVK; only a
-// global binding accepts a child without GVK.
+// bindings are filtered out. Scoped schemas require TypeMeta, Definition.Scheme,
+// or WithGVK. Resolution errors are returned before any mutation.
 func EvaluateAggregation(parent Object, children map[string]Object, a *Aggregation, local ...metav1.Condition) ([]metav1.Condition, error) {
 	if a == nil {
 		return nil, fmt.Errorf("aggregation is nil")
@@ -229,7 +269,15 @@ func EvaluateAggregation(parent Object, children map[string]Object, a *Aggregati
 	for name, child := range children {
 		// Preserve reserved nil slots for domain reducers that count expected children.
 		// Selectors skip nil observations, as in the low-level evaluator.
-		if isNil(child) || a.child(child) != nil {
+		if isNil(child) {
+			selected[name] = child
+			continue
+		}
+		binding, err := a.child(child)
+		if err != nil {
+			return nil, fmt.Errorf("child %q: %w", name, err)
+		}
+		if binding != nil {
 			selected[name] = child
 		}
 	}
